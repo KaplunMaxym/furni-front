@@ -10,10 +10,12 @@ export const useConstructionCreateMutation = () => {
         onSuccess: async (_, { orderId }) => {
             await queryClient.invalidateQueries({ queryKey: ['all-construction']})
             await queryClient.invalidateQueries({ queryKey: ['get-construction-by-order', orderId]})
+            await queryClient.invalidateQueries({ queryKey: ['get-order-details', orderId]})
         },
         onError: async (_, { orderId }) => {
             await queryClient.invalidateQueries({ queryKey: ['all-construction']})
             await queryClient.invalidateQueries({ queryKey: ['get-construction-by-order', orderId]})
+            await queryClient.invalidateQueries({ queryKey: ['get-order-details', orderId]})
         },
     })
 }

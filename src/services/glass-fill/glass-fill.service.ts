@@ -5,9 +5,10 @@ import {
     deleteGlassFill,
     getGlassFillUrl,
     getGlassSimpleFillUrl,
-    updateGlassFill
+    updateGlassFill, upsertGlassPrice
 } from "@/config/api.config";
 import {IGlassFillForm} from "@/screens/glass-fill/types/IGlassFillForm";
+import {IGlassPriceForm} from "@/screens/glass-fill/types/IGlassPriceForm";
 
 export const GlassFillService = {
     getGlassFill: (params: IQueryPagination) =>
@@ -36,6 +37,12 @@ export const GlassFillService = {
         instance({
             url: updateGlassFill(id),
             method: 'PUT',
+            data
+        }),
+    upsertGlassPrice: (data: IGlassPriceForm) =>
+        instance({
+            url: upsertGlassPrice(),
+            method: 'POST',
             data
         })
 };

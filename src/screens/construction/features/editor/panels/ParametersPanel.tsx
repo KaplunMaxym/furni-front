@@ -1,6 +1,6 @@
 'use client'
 
-import React, {useEffect, useMemo} from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import Button from "@/ui/button/Button";
 import Input from "@/ui/input/Input";
@@ -17,10 +17,17 @@ import { ChevronDown } from 'lucide-react';
 import { cn } from "@/helpers/cn";
 import {ConstructionDetail} from "@/screens/construction/type/construction-details/IConstructionDetail";
 import {useConstructionDetails} from "@/screens/construction/hooks/construction-details/useConstructionDetails";
+import {FocusedHoleKey} from "@/screens/construction/type/editor/FocusedHole";
+
+function makeInputRefKey(side: string, type: string, index: number): string {
+    return `${side}__${type}__${index}`;
+}
 
 interface EdgeParams {
     [key: string]: number | undefined;
     offsetY?: number;
+    offsetY1?: number;
+    offsetY2?: number;
     offsetZ?: number;
     countStart: number;
     countEnd: number;
@@ -45,14 +52,15 @@ interface FormValues {
     frameWidth: number;
     frameHeight: number;
     beamThickness: number;
-    sawThickness: number;
     hasHandle?: boolean;
     handleSide?: HandleSideEnum;
     handleOffset?: number;
     handlePosition?: number;
+    hingeSide?: HandleSideEnum;
     drillParams: DrillDefaultParameters;
     millParams: MillDefaultParameters;
     cutParams: CutDefaultParameters;
+    hingeParams: HingeDefaultParameters;
 }
 
 interface ExtendedParametersPanelProps extends ParametersPanelProps {
@@ -64,12 +72,29 @@ interface ExtendedParametersPanelProps extends ParametersPanelProps {
     setMillParams?: (params: MillDefaultParameters) => void;
     cutParams?: CutDefaultParameters;
     setCutParams?: (params: CutDefaultParameters) => void;
+    hingeParams?: HingeDefaultParameters;
+    setHingeParams?: (params: HingeDefaultParameters) => void;
+    hingeSide?: HandleSideEnum;
+    setHingeSide?: (side: HandleSideEnum | undefined) => void;
+    onHoleInputFocus?: (key: FocusedHoleKey) => void;
+    focusedHole?: FocusedHoleKey;
 }
 
 export interface CutDefaultParameters {
     leftAngle: number;
     rightAngle: number;
     offsetZ: number;
+    sawThickness: number;
+}
+
+export interface HingeItem {
+    offsetFromStart?: number;
+    offsetFromEnd?: number;
+    slotWidth: number;
+}
+
+export interface HingeDefaultParameters {
+    hinges: HingeItem[];
 }
 
 export interface DrillDefaultParameters {
@@ -80,6 +105,7 @@ export interface DrillDefaultParameters {
 }
 
 export interface MillDefaultParameters {
+    ignoreHandleSide: boolean;
     TOP: SideMillParams;
     BOTTOM: SideMillParams;
     LEFT: SideMillParams;
@@ -146,6 +172,7 @@ const FALLBACK_DRILL_PARAMS: DrillDefaultParameters = {
 };
 
 const FALLBACK_MILL_PARAMS: MillDefaultParameters = {
+    ignoreHandleSide: false,
     TOP:    { millLength: 35 },
     BOTTOM: { millLength: 35 },
     LEFT:   { millLength: 35 },
@@ -156,6 +183,14 @@ const FALLBACK_CUT_PARAMS: CutDefaultParameters = {
     leftAngle: 45,
     rightAngle: 45,
     offsetZ: 2,
+    sawThickness: 1.344,
+};
+
+const FALLBACK_HINGE_PARAMS: HingeDefaultParameters = {
+    hinges: [
+        { offsetFromStart: 60.8, slotWidth: 44.4 },
+        { offsetFromEnd: 60.8,   slotWidth: 44.4 },
+    ],
 };
 
 const MILL_SIDE_LABELS: Record<'TOP' | 'BOTTOM' | 'LEFT' | 'RIGHT', string> = {
@@ -216,9 +251,23 @@ function extractMillParamsFromProfileSystem(profileSystem: IProfileSystem): Mill
     }
 }
 
-function analyzeDrillParamsStructure(drillParams: DrillDefaultParameters, details: ConstructionDetail[]): Array<{ key: 'TOP' | 'BOTTOM' | 'LEFT' | 'RIGHT'; label: string; hasOffsetY: boolean; hasOffsetZ: boolean; hasHandle: boolean; startCount: number; endCount: number; }> {
-    console.log(details)
+function extractHingeParamsFromProfileSystem(profileSystem: IProfileSystem): HingeDefaultParameters {
+    const hingeOperation = profileSystem.operation?.find(
+        op => op.operationType === OperationType.HINGE_MILL
+    );
+    if (!hingeOperation?.defaultParameters) return FALLBACK_HINGE_PARAMS;
+    try {
+        const parsed = typeof hingeOperation.defaultParameters === 'string'
+            ? JSON.parse(hingeOperation.defaultParameters)
+            : hingeOperation.defaultParameters;
+        if (parsed?.hinges?.length) return parsed as HingeDefaultParameters;
+        return FALLBACK_HINGE_PARAMS;
+    } catch {
+        return FALLBACK_HINGE_PARAMS;
+    }
+}
 
+function analyzeDrillParamsStructure(drillParams: DrillDefaultParameters, details: ConstructionDetail[]): Array<{ key: 'TOP' | 'BOTTOM' | 'LEFT' | 'RIGHT'; label: string; hasOffsetY: boolean; hasOffsetY1: boolean; hasOffsetY2: boolean; hasOffsetZ: boolean; hasHandle: boolean; startCount: number; endCount: number; }> {
     const sideConfig = [
         { key: 'TOP' as const,    label: 'Верхня балка (TOP)' },
         { key: 'BOTTOM' as const, label: 'Нижня балка (BOTTOM)' },
@@ -226,25 +275,67 @@ function analyzeDrillParamsStructure(drillParams: DrillDefaultParameters, detail
         { key: 'RIGHT' as const,  label: 'Права балка (RIGHT)' },
     ];
 
-    return sideConfig.map(config => {
-        const sideData = drillParams[config.key];
-        const detail = details.find(d => NAME_TO_SIDE_KEY[d.name] === config.key);
-        const sequencePrefix = detail?.sequence != null ? `R${detail.sequence} ` : '';
-        return {
-            key: config.key,
-            label: `${sequencePrefix}${config.label}`,
-            sequence: detail?.sequence ?? Infinity,
-            hasOffsetY:  sideData?.edge?.offsetY !== undefined,
-            hasOffsetZ:  sideData?.edge?.offsetZ !== undefined,
-            hasHandle:   sideData?.handle        !== undefined,
-            startCount:  sideData?.edge?.countStart ?? 0,
-            endCount:    sideData?.edge?.countEnd   ?? 0,
-        };
-    }).sort((a, b) => a.sequence - b.sequence);
+    return sideConfig
+        .map(config => {
+            const sideData = drillParams[config.key];
+            if (!sideData || !sideData.edge || Object.keys(sideData.edge).length === 0) return null;
+
+            const detail = details.find(d => NAME_TO_SIDE_KEY[d.name] === config.key);
+            const sequencePrefix = detail?.sequence != null ? `R${detail.sequence} ` : '';
+            return {
+                key: config.key,
+                label: `${sequencePrefix}${config.label}`,
+                sequence: detail?.sequence ?? Infinity,
+                // Старий формат: одне offsetY на весь edge (напр. ALU-80).
+                hasOffsetY:  sideData?.edge?.offsetY  !== undefined,
+                // Новий формат: окремо для start- та end-групи отворів (напр. PIN-TYPE).
+                hasOffsetY1: sideData?.edge?.offsetY1 !== undefined,
+                hasOffsetY2: sideData?.edge?.offsetY2 !== undefined,
+                hasOffsetZ:  sideData?.edge?.offsetZ !== undefined,
+                hasHandle:   sideData?.handle        !== undefined,
+                startCount:  sideData?.edge?.countStart ?? 0,
+                endCount:    sideData?.edge?.countEnd   ?? 0,
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a!.sequence - b!.sequence) as Array<{
+        key: 'TOP' | 'BOTTOM' | 'LEFT' | 'RIGHT';
+        label: string;
+        hasOffsetY: boolean;
+        hasOffsetY1: boolean;
+        hasOffsetY2: boolean;
+        hasOffsetZ: boolean;
+        hasHandle: boolean;
+        startCount: number;
+        endCount: number;
+    }>;
 }
 
-export default function ParametersPanel({ construction, frameWidth, setFrameWidth, frameHeight, setFrameHeight, beamThickness, setBeamThickness, sawThickness, setSawThickness, hasHandle, setHasHandle, handleSide, setHandleSide, handleOffset, setHandleOffset, handlePosition, setHandlePosition, drillParams: externalDrillParams, setDrillParams: setExternalDrillParams, cutParams: externalCutParams, setCutParams: setExternalCutParams, millParams: externalMillParams, setMillParams: setExternalMillParams, profileSystem, onUpdate}: ExtendedParametersPanelProps) {
-    const { data: details = [] as ConstructionDetail[], isLoading: isLoadingDetails } = useConstructionDetails(construction.id);
+export default function ParametersPanel({
+                                            construction,
+                                            frameWidth, setFrameWidth,
+                                            frameHeight, setFrameHeight,
+                                            beamThickness, setBeamThickness,
+                                            hasHandle, setHasHandle,
+                                            handleSide, setHandleSide,
+                                            handleOffset, setHandleOffset,
+                                            handlePosition, setHandlePosition,
+                                            drillParams: externalDrillParams,
+                                            setDrillParams: setExternalDrillParams,
+                                            cutParams: externalCutParams,
+                                            setCutParams: setExternalCutParams,
+                                            millParams: externalMillParams,
+                                            setMillParams: setExternalMillParams,
+                                            hingeParams: externalHingeParams,
+                                            setHingeParams: setExternalHingeParams,
+                                            hingeSide,
+                                            setHingeSide,
+                                            profileSystem,
+                                            onUpdate,
+                                            onHoleInputFocus,
+                                            focusedHole,
+                                        }: ExtendedParametersPanelProps) {
+    const { data: details = [] as ConstructionDetail[] } = useConstructionDetails(construction.id);
 
     const resolvedInitialDrillParams = useMemo(() => {
         if (externalDrillParams) return externalDrillParams;
@@ -261,56 +352,72 @@ export default function ParametersPanel({ construction, frameWidth, setFrameWidt
         return extractCutParamsFromProfileSystem(profileSystem);
     }, []);
 
+    const resolvedInitialHingeParams = useMemo(() => {
+        if (externalHingeParams) return externalHingeParams;
+        return extractHingeParamsFromProfileSystem(profileSystem);
+    }, []);
+
     const [initialValues, setInitialValues] = React.useState<FormValues>({
         frameWidth,
         frameHeight,
         beamThickness,
-        sawThickness,
         hasHandle,
         handleSide,
         handleOffset,
         handlePosition,
+        hingeSide,
         drillParams: resolvedInitialDrillParams,
         millParams:  resolvedInitialMillParams,
-        cutParams: resolvedInitialCutParams
+        cutParams:   resolvedInitialCutParams,
+        hingeParams: resolvedInitialHingeParams,
     });
 
     const [expandedSections,   setExpandedSections]   = React.useState<Set<string>>(new Set());
     const [expandedDrillSides, setExpandedDrillSides] = React.useState<Set<string>>(new Set());
-    const [expandedMillSides, setExpandedMillSides] = React.useState<Set<string>>(new Set());
+    const [expandedMillSides,  setExpandedMillSides]  = React.useState<Set<string>>(new Set());
 
     const { control, setValue, getValues } = useForm<FormValues>({
         defaultValues: {
             frameWidth,
             frameHeight,
             beamThickness,
-            sawThickness,
             hasHandle,
             handleSide,
             handleOffset,
             handlePosition,
+            hingeSide,
             drillParams: resolvedInitialDrillParams,
             millParams:  resolvedInitialMillParams,
-            cutParams: resolvedInitialCutParams,
+            cutParams:   resolvedInitialCutParams,
+            hingeParams: resolvedInitialHingeParams,
         },
         mode: 'onChange',
     });
 
+    const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+
+    const setInputRef = (key: string, el: HTMLInputElement | null) => {
+        if (el) inputRefs.current.set(key, el);
+        else    inputRefs.current.delete(key);
+    };
+
     const watchedFrameWidth     = useWatch({ control, name: 'frameWidth' });
     const watchedFrameHeight    = useWatch({ control, name: 'frameHeight' });
     const watchedBeamThickness  = useWatch({ control, name: 'beamThickness' });
-    const watchedSawThickness   = useWatch({ control, name: 'sawThickness' });
     const watchedHasHandle      = useWatch({ control, name: 'hasHandle' });
     const watchedHandleSide     = useWatch({ control, name: 'handleSide' });
     const watchedHandleOffset   = useWatch({ control, name: 'handleOffset' });
     const watchedHandlePosition = useWatch({ control, name: 'handlePosition' });
+    const watchedHingeSide      = useWatch({ control, name: 'hingeSide' });
     const watchedDrillParams    = useWatch({ control, name: 'drillParams' });
     const watchedMillParams     = useWatch({ control, name: 'millParams' });
-    const watchedCutParams = useWatch({ control, name: 'cutParams' });
+    const watchedCutParams      = useWatch({ control, name: 'cutParams' });
+    const watchedHingeParams    = useWatch({ control, name: 'hingeParams' });
 
-    const drillParamsStr = JSON.stringify(watchedDrillParams);
-    const millParamsStr  = JSON.stringify(watchedMillParams);
-    const cutParamsStr = JSON.stringify(watchedCutParams);
+    const drillParamsStr  = JSON.stringify(watchedDrillParams);
+    const millParamsStr   = JSON.stringify(watchedMillParams);
+    const cutParamsStr    = JSON.stringify(watchedCutParams);
+    const hingeParamsStr  = JSON.stringify(watchedHingeParams);
 
     const drillSides = useMemo(
         () => analyzeDrillParamsStructure(watchedDrillParams, details),
@@ -325,38 +432,43 @@ export default function ParametersPanel({ construction, frameWidth, setFrameWidt
             watchedFrameWidth     !== initial.frameWidth     ||
             watchedFrameHeight    !== initial.frameHeight    ||
             watchedBeamThickness  !== initial.beamThickness  ||
-            watchedSawThickness   !== initial.sawThickness   ||
             watchedHasHandle      !== initial.hasHandle      ||
             watchedHandleSide     !== initial.handleSide     ||
             watchedHandleOffset   !== initial.handleOffset   ||
             watchedHandlePosition !== initial.handlePosition ||
-            drillParamsStr !== JSON.stringify(initial.drillParams) ||
-            millParamsStr  !== JSON.stringify(initial.millParams) ||
-            cutParamsStr !== JSON.stringify(initial.cutParams)
+            watchedHingeSide      !== initial.hingeSide      ||
+            drillParamsStr  !== JSON.stringify(initial.drillParams)  ||
+            millParamsStr   !== JSON.stringify(initial.millParams)   ||
+            cutParamsStr    !== JSON.stringify(initial.cutParams)    ||
+            hingeParamsStr  !== JSON.stringify(initial.hingeParams)
         );
     }, [
-        watchedFrameWidth, watchedFrameHeight, watchedBeamThickness, watchedSawThickness,
+        watchedFrameWidth, watchedFrameHeight, watchedBeamThickness,
         watchedHasHandle, watchedHandleSide, watchedHandleOffset, watchedHandlePosition,
-        drillParamsStr, millParamsStr,
-        initialValuesStr, cutParamsStr
+        watchedHingeSide,
+        drillParamsStr, millParamsStr, cutParamsStr, hingeParamsStr,
+        initialValuesStr,
     ]);
 
     useEffect(() => {
         setFrameWidth(watchedFrameWidth);
         setFrameHeight(watchedFrameHeight);
         setBeamThickness(watchedBeamThickness);
-        setSawThickness(watchedSawThickness);
         if (setHasHandle)      setHasHandle(watchedHasHandle ?? false);
         if (setHandleSide)     setHandleSide(watchedHandleSide);
         if (setHandleOffset)   setHandleOffset(watchedHandleOffset);
         if (setHandlePosition) setHandlePosition(watchedHandlePosition);
     }, [
-        watchedFrameWidth, watchedFrameHeight, watchedBeamThickness, watchedSawThickness,
+        watchedFrameWidth, watchedFrameHeight, watchedBeamThickness,
         watchedHasHandle, watchedHandleSide, watchedHandleOffset, watchedHandlePosition,
     ]);
 
     useEffect(() => {
-        if (setExternalCutParams) setExternalCutParams(JSON.parse(cutParamsStr));
+        if (setHingeSide) setHingeSide(watchedHingeSide);
+    }, [watchedHingeSide]);
+
+    useEffect(() => {
+        if (setExternalCutParams)   setExternalCutParams(JSON.parse(cutParamsStr));
     }, [cutParamsStr]);
 
     useEffect(() => {
@@ -364,22 +476,69 @@ export default function ParametersPanel({ construction, frameWidth, setFrameWidt
     }, [drillParamsStr]);
 
     useEffect(() => {
-        if (setExternalMillParams) setExternalMillParams(JSON.parse(millParamsStr));
+        if (setExternalMillParams)  setExternalMillParams(JSON.parse(millParamsStr));
     }, [millParamsStr]);
 
-    const handleSideOptions = Object.values(HandleSideEnum).map(side => ({ label: side, value: side }));
+    useEffect(() => {
+        if (setExternalHingeParams) setExternalHingeParams(JSON.parse(hingeParamsStr));
+    }, [hingeParamsStr]);
 
-    const toggleSection    = (section: string) => {
+    useEffect(() => {
+        if (!focusedHole) return;
+
+        setExpandedSections(prev => {
+            const next = new Set(prev);
+            next.add('drill');
+            return next;
+        });
+
+        setExpandedDrillSides(prev => {
+            const next = new Set(prev);
+            next.add(focusedHole.side);
+            return next;
+        });
+
+        const timer = setTimeout(() => {
+            let refKey: string;
+            if (focusedHole.type === 'handle') {
+                refKey = focusedHole.index === 1
+                    ? `${focusedHole.side}__handle__spacingX`
+                    : `${focusedHole.side}__handle__offsetY`;
+            } else {
+                refKey = makeInputRefKey(focusedHole.side, focusedHole.type, focusedHole.index);
+            }
+
+            const el = inputRefs.current.get(refKey);
+            if (el) {
+                el.focus({ preventScroll: false });
+                el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }, 150);
+
+        return () => clearTimeout(timer);
+    }, [focusedHole]);
+
+    const handleSideOptions = [
+        { label: 'Ліво',  value: HandleSideEnum.LEFT  },
+        { label: 'Право', value: HandleSideEnum.RIGHT },
+    ];
+
+    const hingeSideOptions = [
+        { label: 'Ліво',  value: HandleSideEnum.LEFT  },
+        { label: 'Право', value: HandleSideEnum.RIGHT },
+    ];
+
+    const toggleSection   = (section: string) => {
         const next = new Set(expandedSections);
         next.has(section) ? next.delete(section) : next.add(section);
         setExpandedSections(next);
     };
-    const toggleDrillSide  = (side: string) => {
+    const toggleDrillSide = (side: string) => {
         const next = new Set(expandedDrillSides);
         next.has(side) ? next.delete(side) : next.add(side);
         setExpandedDrillSides(next);
     };
-    const toggleMillSide   = (side: string) => {
+    const toggleMillSide  = (side: string) => {
         const next = new Set(expandedMillSides);
         next.has(side) ? next.delete(side) : next.add(side);
         setExpandedMillSides(next);
@@ -390,7 +549,6 @@ export default function ParametersPanel({ construction, frameWidth, setFrameWidt
         const width  = Number(watchedFrameWidth);
         const height = Number(watchedFrameHeight);
         const beam   = Number(watchedBeamThickness);
-        const saw    = Number(watchedSawThickness);
 
         if (!width  || isNaN(width))  errors.push('Ширина рамки: введіть значення');
         else {
@@ -406,13 +564,6 @@ export default function ParametersPanel({ construction, frameWidth, setFrameWidt
         else {
             if (beam < 5)   errors.push('Товщина балки: мінімум 5 мм');
             if (beam > 100) errors.push('Товщина балки: максимум 100 мм');
-        }
-        if (!saw || isNaN(saw)) errors.push('Товщина пили: введіть значення');
-        else {
-            if (saw < 0.1) errors.push('Товщина пили: мінімум 0.1 мм');
-            if (saw > 10)  errors.push('Товщина пили: максимум 10 мм');
-            const dp = String(saw).split('.')[1];
-            if (dp && dp.length > 3) errors.push('Товщина пили: максимум 3 цифри після коми');
         }
         if (watchedHasHandle) {
             if (!watchedHandleSide) errors.push('Сторона ручки: оберіть сторону');
@@ -444,14 +595,15 @@ export default function ParametersPanel({ construction, frameWidth, setFrameWidt
                 frameWidth:     currentValues.frameWidth,
                 frameHeight:    currentValues.frameHeight,
                 beamThickness:  currentValues.beamThickness,
-                sawThickness:   currentValues.sawThickness,
                 hasHandle:      currentValues.hasHandle,
                 handleSide:     currentValues.handleSide,
                 handleOffset:   currentValues.handleOffset,
                 handlePosition: currentValues.handlePosition,
+                hingeSide:      currentValues.hingeSide,
                 drillParams:    JSON.parse(JSON.stringify(currentValues.drillParams)),
                 millParams:     JSON.parse(JSON.stringify(currentValues.millParams)),
-                cutParams: JSON.parse(JSON.stringify(currentValues.cutParams)),
+                cutParams:      JSON.parse(JSON.stringify(currentValues.cutParams)),
+                hingeParams:    JSON.parse(JSON.stringify(currentValues.hingeParams)),
             });
             toast.success('Зміни успішно застосовані та збережені!', { duration: 3000, position: 'top-right' });
         } catch (error) {
@@ -477,6 +629,14 @@ export default function ParametersPanel({ construction, frameWidth, setFrameWidt
             ?? 'Параметри фрезерування';
     }, [profileSystem]);
 
+    const hingeOperationTitle = useMemo(() => {
+        return profileSystem.operation?.find(op => op.operationType === OperationType.HINGE_MILL)?.title
+            ?? 'Параметри завіс';
+    }, [profileSystem]);
+
+    const focusHole = (key: FocusedHoleKey) => onHoleInputFocus?.(key);
+    const blurHole  = () => onHoleInputFocus?.(null);
+
     return (
         <div className="flex flex-col bg-react/400">
             <div className="p-3">
@@ -499,18 +659,24 @@ export default function ParametersPanel({ construction, frameWidth, setFrameWidt
                     </button>
                     {expandedSections.has('dimensions') && (
                         <div className="mt-2 p-3 bg-gray-700/20 rounded-lg space-y-3">
-                            <Input<FormValues> control={control} name="frameWidth" type="number"
-                                               label="Ширина (мм) (X):"
-                                               rules={{ min: { value: 100, message: 'Мінімум 100 мм' }, max: { value: 3000, message: 'Максимум 3000 мм' }, validate: validateDecimalPlaces }}
-                                               placeholder="Введіть ширину" className="flex-1 z-0" classNameContainer="mb-0 relative z-0" />
-                            <Input<FormValues> control={control} name="frameHeight" type="number"
-                                               label="Висота (мм) (Y):"
-                                               rules={{ min: { value: 100, message: 'Мінімум 100 мм' }, max: { value: 3000, message: 'Максимум 3000 мм' }, validate: validateDecimalPlaces }}
-                                               placeholder="Введіть висоту" className="flex-1 z-0" classNameContainer="mb-0 relative z-0" />
-                            <Input<FormValues> control={control} name="beamThickness" type="number"
-                                               label="Товщина балки (мм):"
-                                               rules={{ min: { value: 5, message: 'Мінімум 5 мм' }, max: { value: 100, message: 'Максимум 100 мм' }, validate: validateDecimalPlaces }}
-                                               placeholder="Введіть товщину" className="flex-1 z-0" classNameContainer="mb-0 relative z-0" />
+                            <Input<FormValues>
+                                control={control} name="frameWidth" type="number"
+                                label="Ширина (мм) (X):"
+                                rules={{ min: { value: 100, message: 'Мінімум 100 мм' }, max: { value: 3000, message: 'Максимум 3000 мм' }, validate: validateDecimalPlaces }}
+                                placeholder="Введіть ширину" className="flex-1 z-0" classNameContainer="mb-0 relative z-0"
+                            />
+                            <Input<FormValues>
+                                control={control} name="frameHeight" type="number"
+                                label="Висота (мм) (Y):"
+                                rules={{ min: { value: 100, message: 'Мінімум 100 мм' }, max: { value: 3000, message: 'Максимум 3000 мм' }, validate: validateDecimalPlaces }}
+                                placeholder="Введіть висоту" className="flex-1 z-0" classNameContainer="mb-0 relative z-0"
+                            />
+                            <Input<FormValues>
+                                control={control} name="beamThickness" type="number"
+                                label="Товщина балки (мм):"
+                                rules={{ min: { value: 5, message: 'Мінімум 5 мм' }, max: { value: 100, message: 'Максимум 100 мм' }, validate: validateDecimalPlaces }}
+                                placeholder="Введіть товщину" className="flex-1 z-0" classNameContainer="mb-0 relative z-0"
+                            />
                         </div>
                     )}
                 </div>
@@ -531,10 +697,10 @@ export default function ParametersPanel({ construction, frameWidth, setFrameWidt
                     {expandedSections.has('cutting') && (
                         <div className="mt-2 p-3 bg-gray-700/20 rounded-lg space-y-3">
                             <Input<FormValues>
-                                control={control} name="sawThickness" type="number" step="0.001"
+                                control={control} name="cutParams.sawThickness" type="number" step="0.001"
                                 label="Товщина пили (мм):"
                                 rules={{ min: { value: 0.1, message: 'Мінімум 0.1 мм' }, max: { value: 10, message: 'Максимум 10 мм' }, validate: validateDecimalPlaces }}
-                                placeholder="Введіть товщину (мм, макс 3 цифри)" className="flex-1 z-0" classNameContainer="mb-0 relative z-0"
+                                placeholder="Введіть товщину" className="flex-1 z-0" classNameContainer="mb-0 relative z-0"
                             />
                             <Input<FormValues>
                                 control={control} name="cutParams.offsetZ" type="number" step="0.001"
@@ -579,16 +745,20 @@ export default function ParametersPanel({ construction, frameWidth, setFrameWidt
                                 </div>
                                 <div className="flex flex-row gap-4">
                                     <div className="flex-1">
-                                        <Input<FormValues> control={control} name="handleOffset" type="number" step="0.001"
-                                                           label="Ширина ручки (мм):"
-                                                           rules={{ min: { value: 0, message: 'Мінімум 0 мм' }, max: { value: 1000, message: 'Максимум 1000 мм' }, validate: validateDecimalPlaces }}
-                                                           placeholder="160" className="flex-1 z-0" classNameContainer="mb-0 relative z-0" />
+                                        <Input<FormValues>
+                                            control={control} name="handleOffset" type="number" step="0.001"
+                                            label="Ширина ручки (мм):"
+                                            rules={{ min: { value: 0, message: 'Мінімум 0 мм' }, max: { value: 1000, message: 'Максимум 1000 мм' }, validate: validateDecimalPlaces }}
+                                            placeholder="160" className="flex-1 z-0" classNameContainer="mb-0 relative z-0"
+                                        />
                                     </div>
                                     <div className="flex-1">
-                                        <Input<FormValues> control={control} name="handlePosition" type="number" step="0.001"
-                                                           label="Позиція ручки (мм):"
-                                                           rules={{ min: { value: 0, message: 'Мінімум 0 мм' }, max: { value: 2000, message: 'Максимум 2000 мм' }, validate: validateDecimalPlaces }}
-                                                           placeholder="0" className="flex-1 z-0" classNameContainer="mb-0 relative z-0" />
+                                        <Input<FormValues>
+                                            control={control} name="handlePosition" type="number" step="0.001"
+                                            label="Позиція ручки (мм):"
+                                            rules={{ min: { value: 0, message: 'Мінімум 0 мм' }, max: { value: 2000, message: 'Максимум 2000 мм' }, validate: validateDecimalPlaces }}
+                                            placeholder="0" className="flex-1 z-0" classNameContainer="mb-0 relative z-0"
+                                        />
                                     </div>
                                 </div>
                             </div>
@@ -596,6 +766,84 @@ export default function ParametersPanel({ construction, frameWidth, setFrameWidt
                     </div>
                 )}
 
+                {hingeSide && (
+                    <div className="mb-2">
+                        <button
+                            onClick={() => toggleSection('hinge')}
+                            className={cn(
+                                "w-full flex items-center justify-between px-3 py-2.5 rounded-lg font-semibold transition-all",
+                                expandedSections.has('hinge')
+                                    ? "bg-purple-400/20 border border-purple-400/50 text-purple-400"
+                                    : "bg-gray-700/30 border border-gray-600/50 text-gray-300 hover:bg-gray-700/50"
+                            )}
+                        >
+                            <span className="flex items-center gap-2">{hingeOperationTitle}</span>
+                            <ChevronDown size={18} className={cn("transition-transform", expandedSections.has('hinge') ? "rotate-180" : "")} />
+                        </button>
+                        {expandedSections.has('hinge') && (
+                            <div className="mt-2 p-3 bg-gray-700/20 rounded-lg space-y-3">
+                                <div>
+                                    <p className="text-xs font-semibold pl-4 mb-2">Сторона завіс</p>
+                                    <SelectorSearch
+                                        getAndSet={[
+                                            watchedHingeSide || '',
+                                            (value) => setValue('hingeSide', (value as HandleSideEnum) || undefined)
+                                        ]}
+                                        options={hingeSideOptions}
+                                        placeholder={'Без завіс'}
+                                        optionValue="value"
+                                        optionLabel="label"
+                                        isEmptyValueDisable={false}
+                                        searchable={true}
+                                    />
+                                </div>
+
+                                {watchedHingeSide && (
+                                    <div className="space-y-2">
+                                        {watchedHingeParams.hinges.map((hinge, index) => {
+                                            const label = hinge.offsetFromStart !== undefined
+                                                ? `Завіса ${index + 1} — від початку`
+                                                : `Завіса ${index + 1} — від кінця`;
+                                            return (
+                                                <div key={index} className="rounded-lg overflow-hidden">
+                                                    <div className="px-3 py-2 bg-purple-500/10 text-purple-300 text-sm font-semibold">
+                                                        {label}
+                                                    </div>
+                                                    <div className="p-3 bg-gray-800/40 grid grid-cols-2 gap-2">
+                                                        <Input<FormValues>
+                                                            control={control}
+                                                            name={hinge.offsetFromStart !== undefined
+                                                                ? `hingeParams.hinges.${index}.offsetFromStart`
+                                                                : `hingeParams.hinges.${index}.offsetFromEnd`
+                                                            }
+                                                            type="number" step="0.001"
+                                                            label={hinge.offsetFromStart !== undefined
+                                                                ? 'Відступ від початку (мм)'
+                                                                : 'Відступ від кінця (мм)'
+                                                            }
+                                                            rules={{ min: { value: 0, message: 'Мінімум 0' } }}
+                                                            className="z-0" classNameContainer="mb-0 relative z-0"
+                                                        />
+                                                        <Input<FormValues>
+                                                            control={control}
+                                                            name={`hingeParams.hinges.${index}.slotWidth`}
+                                                            type="number" step="0.001"
+                                                            label="Ширина завіси (мм)"
+                                                            rules={{ min: { value: 1, message: 'Мінімум 1' } }}
+                                                            className="z-0" classNameContainer="mb-0 relative z-0"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Свердління */}
                 <div className="mb-2">
                     <button
                         onClick={() => toggleSection('drill')}
@@ -612,7 +860,7 @@ export default function ParametersPanel({ construction, frameWidth, setFrameWidt
 
                     {expandedSections.has('drill') && (
                         <div className="mt-2 space-y-2">
-                            {drillSides.map(({ key, label, hasOffsetY, hasOffsetZ, hasHandle: sideHasHandle, startCount, endCount }) => (
+                            {drillSides.map(({ key, label, hasOffsetY, hasOffsetY1, hasOffsetY2, hasOffsetZ, hasHandle: sideHasHandle, startCount, endCount }) => (
                                 <div key={key} className="rounded-lg overflow-hidden">
                                     <button
                                         onClick={() => toggleDrillSide(key)}
@@ -631,14 +879,32 @@ export default function ParametersPanel({ construction, frameWidth, setFrameWidt
                                         <div className="p-3 bg-gray-800/40 space-y-4">
                                             <div>
                                                 <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-2">
-                                                    Edge — крайові отвори
+                                                    Крайові отвори
                                                 </p>
                                                 <div className="grid grid-cols-2 gap-2">
                                                     {hasOffsetY && (
                                                         <Input<FormValues>
                                                             control={control}
                                                             name={`drillParams.${key}.edge.offsetY`}
-                                                            type="number" step="0.001" label="offsetY (мм)"
+                                                            type="number" step="0.001" label="Відступ Y (мм)"
+                                                            rules={{ min: { value: 0, message: 'Мінімум 0' } }}
+                                                            className="z-0" classNameContainer="mb-0 relative z-0"
+                                                        />
+                                                    )}
+                                                    {hasOffsetY1 && (
+                                                        <Input<FormValues>
+                                                            control={control}
+                                                            name={`drillParams.${key}.edge.offsetY1`}
+                                                            type="number" step="0.001" label="Відступ Y, від початку (мм)"
+                                                            rules={{ min: { value: 0, message: 'Мінімум 0' } }}
+                                                            className="z-0" classNameContainer="mb-0 relative z-0"
+                                                        />
+                                                    )}
+                                                    {hasOffsetY2 && (
+                                                        <Input<FormValues>
+                                                            control={control}
+                                                            name={`drillParams.${key}.edge.offsetY2`}
+                                                            type="number" step="0.001" label="Відступ Y, від кінця (мм)"
                                                             rules={{ min: { value: 0, message: 'Мінімум 0' } }}
                                                             className="z-0" classNameContainer="mb-0 relative z-0"
                                                         />
@@ -647,47 +913,37 @@ export default function ParametersPanel({ construction, frameWidth, setFrameWidt
                                                         <Input<FormValues>
                                                             control={control}
                                                             name={`drillParams.${key}.edge.offsetZ`}
-                                                            type="number" step="0.001" label="offsetZ (мм)"
+                                                            type="number" step="0.001" label="Відступ Z (мм)"
                                                             rules={{ min: { value: 0, message: 'Мінімум 0' } }}
                                                             className="z-0" classNameContainer="mb-0 relative z-0"
                                                         />
                                                     )}
-
-                                                    {/*<Input<FormValues>*/}
-                                                    {/*    control={control}*/}
-                                                    {/*    name={`drillParams.${key}.edge.countStart`}*/}
-                                                    {/*    type="number" label="countStart"*/}
-                                                    {/*    rules={{ min: { value: 0, message: 'Мінімум 0' } }}*/}
-                                                    {/*    className="z-0" classNameContainer="mb-0 relative z-0"*/}
-                                                    {/*/>*/}
                                                     {Array.from({ length: startCount }, (_, i) => i + 1).map(i => (
                                                         <Input<FormValues>
                                                             key={`start-${i}`}
                                                             control={control}
                                                             name={`drillParams.${key}.edge.startOffsetX${i}`}
                                                             type="number" step="0.001"
-                                                            label={`startOffsetX${i} (мм)`}
+                                                            label={`Відступ від початку X${i} (мм)`}
                                                             rules={{ min: { value: 0, message: 'Мінімум 0' } }}
                                                             className="z-0" classNameContainer="mb-0 relative z-0"
+                                                            inputRef={(el) => setInputRef(makeInputRefKey(key, 'start', i), el)}
+                                                            onFocus={() => focusHole({ side: key, type: 'start', index: i })}
+                                                            onBlur={blurHole}
                                                         />
                                                     ))}
-
-                                                    {/*<Input<FormValues>*/}
-                                                    {/*    control={control}*/}
-                                                    {/*    name={`drillParams.${key}.edge.countEnd`}*/}
-                                                    {/*    type="number" label="countEnd"*/}
-                                                    {/*    rules={{ min: { value: 0, message: 'Мінімум 0' } }}*/}
-                                                    {/*    className="z-0" classNameContainer="mb-0 relative z-0"*/}
-                                                    {/*/>*/}
                                                     {Array.from({ length: endCount }, (_, i) => i + 1).map(i => (
                                                         <Input<FormValues>
                                                             key={`end-${i}`}
                                                             control={control}
                                                             name={`drillParams.${key}.edge.endOffsetX${i}`}
                                                             type="number" step="0.001"
-                                                            label={`endOffsetX${i} (мм)`}
+                                                            label={`Відступ від кінця X${i} (мм)`}
                                                             rules={{ min: { value: 0, message: 'Мінімум 0' } }}
                                                             className="z-0" classNameContainer="mb-0 relative z-0"
+                                                            inputRef={(el) => setInputRef(makeInputRefKey(key, 'end', i), el)}
+                                                            onFocus={() => focusHole({ side: key, type: 'end', index: i })}
+                                                            onBlur={blurHole}
                                                         />
                                                     ))}
                                                 </div>
@@ -696,22 +952,28 @@ export default function ParametersPanel({ construction, frameWidth, setFrameWidt
                                             {sideHasHandle && (
                                                 <div>
                                                     <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-2">
-                                                        Handle — отвори під ручку
+                                                        Отвори під ручку
                                                     </p>
                                                     <div className="grid grid-cols-2 gap-2">
                                                         <Input<FormValues>
                                                             control={control}
                                                             name={`drillParams.${key}.handle.spacingX`}
-                                                            type="number" step="0.001" label="spacingX (мм)"
+                                                            type="number" step="0.001" label="Відстань між отворами (мм)"
                                                             rules={{ min: { value: 0, message: 'Мінімум 0' } }}
                                                             className="z-0" classNameContainer="mb-0 relative z-0"
+                                                            inputRef={(el) => setInputRef(`${key}__handle__spacingX`, el)}
+                                                            onFocus={() => focusHole({ side: key, type: 'handle', index: 1 })}
+                                                            onBlur={blurHole}
                                                         />
                                                         <Input<FormValues>
                                                             control={control}
                                                             name={`drillParams.${key}.handle.offsetY`}
-                                                            type="number" step="0.001" label="offsetY (мм)"
+                                                            type="number" step="0.001" label="Відступ Y (мм)"
                                                             rules={{ min: { value: 0, message: 'Мінімум 0' } }}
                                                             className="z-0" classNameContainer="mb-0 relative z-0"
+                                                            inputRef={(el) => setInputRef(`${key}__handle__offsetY`, el)}
+                                                            onFocus={() => focusHole({ side: key, type: 'handle', index: 2 })}
+                                                            onBlur={blurHole}
                                                         />
                                                     </div>
                                                 </div>
@@ -724,6 +986,7 @@ export default function ParametersPanel({ construction, frameWidth, setFrameWidt
                     )}
                 </div>
 
+                {/* Фрезерування */}
                 <div className="mb-2">
                     <button
                         onClick={() => toggleSection('mill')}
@@ -774,7 +1037,7 @@ export default function ParametersPanel({ construction, frameWidth, setFrameWidt
                                                         control={control}
                                                         name={`millParams.${key}.millLength`}
                                                         type="number" step="0.001"
-                                                        label="millLength (мм)"
+                                                        label="Довжина фрезерування (мм)"
                                                         rules={{ min: { value: 0, message: 'Мінімум 0' } }}
                                                         className="z-0" classNameContainer="mb-0 relative z-0"
                                                     />

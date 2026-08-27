@@ -45,7 +45,6 @@ export interface Canvas3DAdvancedProps {
     frameWidth: number;
     frameHeight: number;
     beamThickness: number;
-    sawThickness: number;
     viewMode?: ViewMode;
     transformMode?: TransformMode;
     onMeshesUpdate?: (meshes: ConstructionMesh[], ordered: ConstructionMesh[]) => void;
@@ -79,8 +78,6 @@ export interface ParametersPanelProps {
     setFrameHeight: (value: number) => void;
     beamThickness: number;
     setBeamThickness: (value: number) => void;
-    sawThickness: number;
-    setSawThickness: (value: number) => void;
     hasHandle?: boolean;
     setHasHandle?: (value: boolean) => void;
     handleSide?: HandleSideEnum;

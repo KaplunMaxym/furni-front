@@ -34,6 +34,7 @@ export const LabelComponent: React.FC<LabelComponentProps> = ({ data }) => {
                     {data.clientName}
                 </div>
                 <div><b>Номер Замовлення:</b> {data.orderNumber}</div>
+                <div><b>Номер Конструкції:</b> {data.constructionNumber}</div>
                 <div><b>Номер Деталі:</b> {data.detailNumber}</div>
                 {data.detailName && <div><b>Деталь:</b> {data.detailName}</div>}
                 <div><b>Розмір:</b> {data.constructionSize}</div>

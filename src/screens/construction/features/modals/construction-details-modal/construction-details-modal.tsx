@@ -65,6 +65,7 @@ const ConstructionDetailModal: FC<IConstructionDetailModal> = ({constructionId, 
             [OperationType.HANDLE_DRILL]: 'bg-yellow-attentiom/50 border-yellow/700 text-black/600',
             [OperationType.ASSEMBLY]:     'bg-blue/50 border-blue/400 text-black/600',
             [OperationType.OTHER]:        'bg-gray/100 border-gray/300 text-black/600',
+            [OperationType.HINGE_MILL]:   'bg-gray/100 border-gray/300 text-black/600',
         };
         return colorMap[type];
     };
@@ -108,7 +109,8 @@ const ConstructionDetailModal: FC<IConstructionDetailModal> = ({constructionId, 
         return {
             clientName: `${order.client.firstName} ${order.client.lastName}`,
             constructionSize: getConstructionSize(construction, detail),
-            detailName: detail.name,
+            detailName: `R${detail.sequence} ${detail.name}`,
+            constructionNumber: construction.constructionNo,
             serialNumber: `${order.orderNumber}${construction.constructionNo}${detail.detailNo}`,
             detailNumber: detail.detailNo,
             orderNumber: order.orderNumber,
@@ -221,7 +223,7 @@ const ConstructionDetailModal: FC<IConstructionDetailModal> = ({constructionId, 
                             </div>
                             <div className="flex items-center gap-4">
                                 <span className="text-sm font-semibold text-gray-700">
-                                    {detail.name}
+                                    R{detail.sequence} {detail.name}
                                 </span>
                                 {detail.type === DetailType.PROFILE && detail.length != null && (
                                     <span className="text-sm font-bold text-gray-900">

@@ -31,6 +31,7 @@ export const getOrderDetails = (id: number) => `/order/get-order-details/${id}`
 export const createOrder = () => '/order/create-order'
 export const updateOrder = (id: number) => `/order/update-order/${id}`
 export const deleteOrder = (id: number) => `/order/delete-order/${id}`
+export const recalculateOrderCost = (id: number) => `/order/${id}/recalculate-cost`
 
 // Order Status
 export const getOrderStatusUrl = () => '/order/all-order-status'
@@ -45,6 +46,9 @@ export const getGlassSimpleFillUrl = () => '/glass-fill/all-glass-fill-simple'
 export const createGlassFill = () => '/glass-fill/create-glass-fill'
 export const updateGlassFill = (id: number) => `/glass-fill/update-glass-fill/${id}`
 export const deleteGlassFill = (id: number) => `/glass-fill/delete-glass-fill/${id}`
+
+// Glass Price
+export const upsertGlassPrice = () => '/glass-fill/upsert-glass-price'
 
 // Construction
 export const getConstruction = () => '/construction/all-construction'
@@ -65,7 +69,80 @@ export const updateConstructionDetailOperationComplete = (detailId: number, oper
 
 // Profile System
 export const getProfileSystemUrl = () => '/profile-system/all-profile-system-simple'
+export const getProfileSystemQueryUrl = () => '/profile-system/all-profile-system'
+export const getProfileSystem = (id: number) => `/profile-system/get-profile-system/${id}`
+export const updateProfileSystem = (id: number) => `/profile-system/update-profile-system/${id}`
+
+// Profile System Material
+export const updateLinkDetailMaterial = (id: number) => `/profile-system/${id}/detail-materials`
+export const deleteUnlinkDetailMaterial = (id: number) => `/profile-system/${id}/detail-materials`
+
+// Profile System Accessory
+export const updateLinkAccessory = (id: number) => `/profile-system/${id}/accessories`
+export const deleteUnlinkAccessory = (id: number) => `/profile-system/${id}/accessories`
+
+// Profile System Operation
+export const getProfileSystemOperations = (profileSystemId: number) => `/profile-system/get-operations/${profileSystemId}`
+export const getProfileSystemOperation = (id: number) => `/profile-system/get-operation/${id}`
+export const updateProfileSystemOperation = (id: number) => `/profile-system/update-operation/${id}`
+
+// Cnc Template
+export const getCncTemplates = (profileSystemId: number) => `/profile-system/get-templates/${profileSystemId}`
+export const getCncTemplate = (id: number) => `/profile-system/get-template/${id}`
+export const updateCncTemplate = (id: number) => `/profile-system/update-template/${id}`
+
+// Profile System Detail
+export const getProfileSystemDetails = (profileSystemId: number) => `/profile-system/get-profile-system-details/${profileSystemId}`
+export const getProfileSystemDetail = (id: number) => `/profile-system/get-profile-system-detail/${id}`
+export const updateProfileSystemDetail = (id: number) => `/profile-system/update-profile-system-detail/${id}`
+
+// Mill Side
+export const getMillSide = (profileSystemId: number) => `/profile-system/get-mill-parameters/${profileSystemId}`
+export const updateMillSide = (id: number) => `/profile-system/update-mill-parameter/${id}`
+
+// Drill Side
+export const getDrillSide = (profileSystemId: number) => `/profile-system/get-drill-side-params/${profileSystemId}`
+export const updateDrillSide = (id: number) => `/profile-system/update-drill-side-param/${id}`
 
 // Gcode Program
 export const getGcodeProgramUrl = (id: number) => `/gcode-program/get-gcode-for-operation-and-detail/${id}`
 export const getGcodeByDetailUrl = (detailId: number) => `/gcode-program/get-gcode-for-detail/${detailId}`
+
+// Profile Service
+export const getProfileServiceUrl = () => '/profile-service';
+export const getProfileServiceSimpleUrl = () => '/profile-service/simple';
+export const createProfileService = () => '/profile-service';
+export const updateProfileService = (id: number) => `/profile-service/${id}`;
+export const deleteProfileService = (id: number) => `/profile-service/${id}`;
+
+// Profile Material
+export const getProfileMaterialUrl = () => '/profile-material';
+export const getProfileMaterialSimpleUrl = () => '/profile-material/simple';
+export const createProfileMaterialUrl = () => '/profile-material';
+export const updateProfileMaterialUrl = (id: number) => `/profile-material/${id}`;
+export const deleteProfileMaterialUrl = (id: number) => `/profile-material/${id}`;
+export const upsertProfileMaterialPriceUrl = () => '/profile-material/price/upsert';
+
+// Profile Accessory
+export const getProfileAccessoryUrl = () => '/profile-accessory';
+export const getProfileAccessorySimpleUrl = () => '/profile-accessory/simple';
+export const createProfileAccessoryUrl = () => '/profile-accessory';
+export const updateProfileAccessoryUrl = (id: number) => `/profile-accessory/${id}`;
+export const deleteProfileAccessoryUrl = (id: number) => `/profile-accessory/${id}`;
+export const upsertProfileAccessoryPriceUrl = () => '/profile-accessory/price/upsert';
+
+// Currency
+export const getCurrencyRateUrl = () => '/currency-rate';
+export const getCurrencyRateSimpleUrl = () => '/currency-rate/simple';
+export const createCurrencyRateUrl = () => '/currency-rate';
+export const updateCurrencyRateUrl = (id: number) => `/currency-rate/${id}`;
+export const deleteCurrencyRateUrl = (id: number) => `/currency-rate/${id}`;
+
+// Catalog
+export const getColorsSimpleUrl = () => '/catalog/all-colors-simple'
+export const getColorsForProfileUrl = () => '/catalog/colors/profile'
+export const getColorsForHandleUrl = () => '/catalog/colors/handle'
+export const getColorsUrl = () => '/catalog/colors';
+export const createColorUrl = () => '/catalog/colors';
+export const updateColorUrl = (id: number) => `/catalog/colors/${id}`;
+export const deleteColorUrl = (id: number) => `/catalog/colors/${id}`;

@@ -3,7 +3,7 @@ import {
     createOrder,
     deleteOrder,
     getOrderDetails, getOrdersSimpleUrl,
-    getOrdersUrl,
+    getOrdersUrl, recalculateOrderCost,
     updateOrder
 } from "@/config/api.config";
 import instance from "@/services/api/interceptors.api";
@@ -43,4 +43,9 @@ export const OrderService = {
             url: deleteOrder(id),
             method: 'DELETE'
         }),
+    recalculateOrderCost: (id: number) =>
+        instance({
+            url: recalculateOrderCost(id),
+            method: 'POST'
+        })
 };

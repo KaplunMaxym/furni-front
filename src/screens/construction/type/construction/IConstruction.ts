@@ -18,6 +18,7 @@ export enum OperationType {
     CUT = 'CUT',
     DRILL = 'DRILL',
     MILL = 'MILL',
+    HINGE_MILL = 'HINGE_MILL',
     HANDLE_MILL = 'HANDLE_MILL',
     HANDLE_DRILL = 'HANDLE_DRILL',
     ASSEMBLY = 'ASSEMBLY',
@@ -64,6 +65,8 @@ export interface IConstructionDetails {
     type: DetailType;
     width: number;
     height: number;
+    sequence: number;
+    operations: IProfileSystemOperation[];
     requiresLabel: boolean;
     handleSide: HandleSideEnum;
     constructionId: number;
@@ -78,6 +81,7 @@ export interface IConstruction {
     profileSystemId: number;
     profileSystem: IProfileSystem;
     drillParams: string;
+    hingeParams: string;
     millParams: string;
     cutParams: string;
     constructionStatusId: number;
@@ -93,6 +97,10 @@ export interface IConstruction {
     handleSide?: HandleSideEnum | null;
     handleOffset?: number | null;
     handlePosition?: number | null;
+    hingeSide?: HandleSideEnum | null;
+    hasGlassEdge: boolean | null;
+    colorId?: number | null;
+    handleColorId?: number | null;
     progress: number;
     createdAt: Date;
     updatedAt: Date;

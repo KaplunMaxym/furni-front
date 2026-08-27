@@ -12,9 +12,10 @@ interface IInputProps<T extends FieldValues> extends ComponentProps<'input'> {
     isTextarea?: boolean,
     classNameContainer?: string
     onChange?: (e: ChangeEvent<HTMLInputElement>) => void;
+    inputRef?: (el: HTMLInputElement | null) => void;
 }
 
-const Input = <T extends FieldValues, >({control, name, rules, label, type = 'text', onChange, maxLength = 100000, img, isTextarea, onFocus, onBlur, placeholder, className, classNameContainer, ...props}: IInputProps<T>) => {
+const Input = <T extends FieldValues, >({control, name, rules, label, type = 'text', inputRef, onChange, maxLength = 100000, img, isTextarea, onFocus, onBlur, placeholder, className, classNameContainer, ...props}: IInputProps<T>) => {
     const isPhoneType = type === 'tel'
     // const isTextType = types === 'text'
     const id = useId()
@@ -89,6 +90,11 @@ const Input = <T extends FieldValues, >({control, name, rules, label, type = 'te
                                     <input
                                         id={id}
                                         type={type}
+                                        {...field}
+                                        ref={(el) => {
+                                            field.ref(el);
+                                            inputRef?.(el);
+                                        }}
                                         className={cn(
                                             'px-4 min-h-[40px] font-medium text-black rounded-[12px] border-2 outline-none focus:ring-0 text-base w-full text-ellipsis border-react/500 focus:border-react/300 bg-react/500 duration-300',
                                             // !fieldState.error && 'border-2 border-white/600',
@@ -96,11 +102,10 @@ const Input = <T extends FieldValues, >({control, name, rules, label, type = 'te
                                             (isPhoneType || img) && 'pr-10',
                                             className
                                         )}
-                                        {...field}
                                         {...props}
                                         maxLength={maxLength}
                                         placeholder={placeholder}
-                                        value={(onChange ? props.value : (props.value || field.value)) || ''}
+                                        value={(onChange ? props.value : (props.value ?? field.value)) ?? ''}
                                         onChange={(e) => {
                                             onChange && onChange(e)
                                             handleChange(e, field.onChange)

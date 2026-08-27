@@ -9,16 +9,16 @@ import {useForm} from "react-hook-form";
 import Button from "@/ui/button/Button";
 import Loading from "@/ui/loading/Loading";
 import SelectorSearch from "@/componets/select/virtualized-list/SelectorSearch";
-import {IOrder} from "@/screens/order/types/order/IOrder";
-import {IOrderForm} from "@/screens/order/types/order/IOrderForm";
+import {IOrderForm, PRICE_CATEGORIES} from "@/screens/order/types/order/IOrderForm";
 import {useOrderCreateMutation} from "@/screens/order/hooks/order/useOrderCreateMutation";
 import {useOrderUpdateMutation} from "@/screens/order/hooks/order/useOrderUpdateMutation";
 import {useOrderStatus} from "@/screens/order/hooks/order-status/useOrderStatus";
 import {useClient} from "@/screens/client/hooks/useClient";
 import {useNavigate} from "react-router";
+import {IOrderQuery} from "@/screens/order/types/order/IOrderQuery";
 
 type IOrderCreateModal = ModalProps & {
-    order?: IOrder | null;
+    order?: IOrderQuery | null;
 }
 
 const OrderCreateModal: FC<IOrderCreateModal> = ({ order, ...props }) => {
@@ -28,11 +28,12 @@ const OrderCreateModal: FC<IOrderCreateModal> = ({ order, ...props }) => {
     const { data: dataOrderStatus, isPending: isPendingOrderStatus } = useOrderStatus();
     const { data: dataClients, isPending: isPendingClients } = useClient();
 
-    const { control, handleSubmit, reset, formState: { errors }, setValue, watch } = useForm<IOrderForm>({
+    const { control, handleSubmit, reset, setError, clearErrors, formState: { errors }, setValue, watch } = useForm<IOrderForm>({
         defaultValues: {
             name: '',
             clientId: '',
-            statusId: ''
+            statusId: '',
+            priceCategory: 'REPRESENTATIVE',
         }
     });
 
@@ -61,19 +62,37 @@ const OrderCreateModal: FC<IOrderCreateModal> = ({ order, ...props }) => {
             setValue('name', order.name || '');
             setValue('clientId', order.client?.id || '');
             setValue('statusId', order.status?.id || '');
+            setValue('priceCategory', order.priceCategory || 'REPRESENTATIVE');
         } else {
             reset();
         }
     }, [props.open, isEditMode, order, setValue, reset]);
 
+    const onInvalid = () => {
+        const data = watch();
+        if (!data.clientId || data.clientId === '') {
+            setError('clientId', { message: 'Клієнт обов\'язковий' });
+        }
+    };
+
     const onSubmit = async (data: IOrderForm) => {
         try {
+            let hasError = false;
+
+            if (!data.clientId || data.clientId === '') {
+                setError('clientId', { message: 'Клієнт обов\'язковий' });
+                hasError = true;
+            }
+
+            if (hasError) return;
+
             if (isEditMode && order) {
                 const updateData = {
                     id: order.id,
                     name: data.name,
                     clientId: data.clientId,
-                    statusId: data.statusId || undefined
+                    statusId: data.statusId || undefined,
+                    priceCategory: data.priceCategory,
                 };
                 await updateOrder(updateData);
 
@@ -83,7 +102,8 @@ const OrderCreateModal: FC<IOrderCreateModal> = ({ order, ...props }) => {
                 const createData = {
                     name: data.name,
                     clientId: data.clientId,
-                    statusId: data.statusId || undefined
+                    statusId: data.statusId || undefined,
+                    priceCategory: data.priceCategory,
                 };
 
                 const response = await createOrder(createData);
@@ -107,6 +127,7 @@ const OrderCreateModal: FC<IOrderCreateModal> = ({ order, ...props }) => {
 
     const clientIdValue = watch('clientId');
     const statusIdValue = watch('statusId');
+    const priceCategoryValue = watch('priceCategory');
 
     return (
         <Modal
@@ -120,7 +141,7 @@ const OrderCreateModal: FC<IOrderCreateModal> = ({ order, ...props }) => {
             </Modal.Title>
 
             <Modal.Body className={'flex flex-col gap-4 rounded-xl p-3'}>
-                <form onSubmit={handleSubmit(onSubmit)} className={'flex flex-col gap-4'}>
+                <form onSubmit={handleSubmit(onSubmit, onInvalid)} className={'flex flex-col gap-4'}>
                     <div className={'relative flex flex-col gap-[5px] h-fit'}>
                         <p className="text-xs font-semibold pl-4">Назва (необов'язково)</p>
                         <Input
@@ -138,7 +159,10 @@ const OrderCreateModal: FC<IOrderCreateModal> = ({ order, ...props }) => {
                                 <SelectorSearch
                                     getAndSet={[
                                         clientIdValue || '',
-                                        (value) => setValue('clientId', value as string)
+                                        (value) => {
+                                            setValue('clientId', value as string);
+                                            clearErrors('clientId');
+                                        }
                                     ]}
                                     options={formattedUsersOptions}
                                     placeholder={'Оберіть клієнта'}
@@ -146,14 +170,31 @@ const OrderCreateModal: FC<IOrderCreateModal> = ({ order, ...props }) => {
                                     optionLabel="label"
                                     isEmptyValueDisable={true}
                                     searchable={true}
+                                    hasError={!!errors.clientId}
                                 />
                                 {errors.clientId && (
-                                    <p className={'text-red-500 text-sm'}>Клієнт обов'язковий</p>
+                                    <p className={'text-red-500 text-xs mt-1'}>{errors.clientId.message as string}</p>
                                 )}
                             </>
                         ) : (
                             <p className="text-gray-400 text-sm">Завантаження клієнтів...</p>
                         )}
+                    </div>
+
+                    <div className={'relative flex flex-col gap-[5px] h-fit'}>
+                        <p className="text-xs font-semibold pl-4">Цінова категорія</p>
+                        <SelectorSearch
+                            getAndSet={[
+                                priceCategoryValue || 'REPRESENTATIVE',
+                                (value) => setValue('priceCategory', value as string)
+                            ]}
+                            options={PRICE_CATEGORIES}
+                            placeholder={'Оберіть цінову категорію'}
+                            optionValue="value"
+                            optionLabel="label"
+                            isEmptyValueDisable={true}
+                            searchable={false}
+                        />
                     </div>
 
                     <div className={'relative flex flex-col gap-[5px] h-fit'}>

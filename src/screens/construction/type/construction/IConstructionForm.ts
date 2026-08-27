@@ -1,6 +1,6 @@
 import {
     CutDefaultParameters,
-    DrillDefaultParameters,
+    DrillDefaultParameters, HingeDefaultParameters,
     MillDefaultParameters
 } from "@/screens/construction/features/editor/panels/ParametersPanel";
 
@@ -16,16 +16,20 @@ export type HandleSideEnum = typeof HandleSideEnum[keyof typeof HandleSideEnum];
 export interface IConstructionForm {
     orderId: number;
     profileSystemId: number;
-    constructionStatusId: number;
+    constructionStatusId: number | undefined;
     width: number;
     height: number;
-    sawThickness: number;
+    // sawThickness: number;
     beamThickness: number;
+    hasGlassEdge?: boolean | null;
     glassFillId?: number | null;
     hasHandle?: boolean;
     handleSide?: HandleSideEnum | null;
+    hingeSide?: HandleSideEnum | null;
     handleOffset?: number | null;
     handlePosition?: number | null;
+    colorId?: number | null;
+    handleColorId?: number | null;
 }
 
 export interface IConstructionFormUpdate {
@@ -34,14 +38,17 @@ export interface IConstructionFormUpdate {
     constructionStatusId?: number;
     width?: number;
     height?: number;
-    sawThickness?: number;
+    hasGlassEdge?: boolean | null;
+    // sawThickness?: number;
     beamThickness?: number;
     glassFillId?: number | null;
     hasHandle?: boolean;
+    hingeSide?: HandleSideEnum | null;
     handleSide?: HandleSideEnum | null;
     handleOffset?: number | null;
     handlePosition?: number | null;
     drillParams?: DrillDefaultParameters;
     millParams?: MillDefaultParameters;
     cutParams?: CutDefaultParameters;
+    hingeParams?: HingeDefaultParameters;
 }

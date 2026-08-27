@@ -117,7 +117,7 @@ const NavigationMenu = () => {
                     <div
                         ref={menuRef}
                         className={cn(
-                            'h-dvh bg-react/500 text-white z-[70] transition-all fixed top-0 left-0 bottom-0 w-[160px] overflow-y-auto scrollbar-hide desktop:w-[160px] flex flex-col justify-between p-5',
+                            'h-dvh bg-react/500 text-white z-[70] transition-all fixed top-0 left-0 bottom-0 w-[160px] overflow-y-auto scrollbar-hide desktop:w-[160px] flex flex-col justify-between p-4',
                         )}
                     >
                         <div className={'flex flex-col gap-3.5 pt-8'}>
@@ -136,11 +136,29 @@ const NavigationMenu = () => {
                                 <LingCustom href={RouterEnum.CONSTRUCTION}>
                                     Конструкції
                                 </LingCustom>
+                                <LingCustom href={RouterEnum.COLOR}>
+                                    Кольори
+                                </LingCustom>
+                                <LingCustom href={RouterEnum.PROFILE_SERVICE}>
+                                    Послуги
+                                </LingCustom>
+                                <LingCustom href={RouterEnum.PROFILE_MATERIAL}>
+                                    Матеріали
+                                </LingCustom>
+                                <LingCustom href={RouterEnum.PROFILE_ACCESSORY}>
+                                    Аксесуари
+                                </LingCustom>
+                                <LingCustom href={RouterEnum.PROFILE_SYSTEM}>
+                                    Профілі
+                                </LingCustom>
                                 <LingCustom href={RouterEnum.GLASS_FILL}>
                                     Скло
                                 </LingCustom>
                                 <LingCustom href={RouterEnum.CLIENTS}>
                                     Клієнти
+                                </LingCustom>
+                                <LingCustom href={RouterEnum.CURRENCY_RATE}>
+                                    Курси валют
                                 </LingCustom>
                                 {role === RoleEnum.ROOT_ADMIN && (
                                     <>

@@ -54,7 +54,8 @@ const LabelModal: FC<ILabelModalProps> = ({ construction, detail, order, ...prop
         return {
             clientName: `${order.client.firstName} ${order.client.lastName}`,
             constructionSize: getConstructionSize(construction, detail),
-            detailName: detail.name,
+            detailName: `R${detail.sequence} ${detail.name}`,
+            constructionNumber: construction.constructionNo,
             serialNumber: `${order.orderNumber}${construction.constructionNo}${detail.detailNo}`,
             detailNumber: detail.detailNo,
             orderNumber: order.orderNumber,
@@ -148,13 +149,18 @@ const LabelModal: FC<ILabelModalProps> = ({ construction, detail, order, ...prop
                                     </div>
 
                                     <div>
+                                        <span className="font-bold text-black/500">Номер Конструкції:</span>
+                                        <span className="text-black/500"> {construction.constructionNo}</span>
+                                    </div>
+
+                                    <div>
                                         <span className="font-bold text-black/500">Номер Деталі:</span>
                                         <span className="text-black/500"> {detail.detailNo}</span>
                                     </div>
 
                                     <div>
                                         <span className="font-bold text-black/500">Деталь:</span>
-                                        <span className="text-black/500"> {detail.name}</span>
+                                        <span className="text-black/500"> R{detail.sequence} {detail.name}</span>
                                     </div>
 
                                     <div>

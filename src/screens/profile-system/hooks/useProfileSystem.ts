@@ -1,5 +1,5 @@
 import {useQuery} from "@tanstack/react-query";
-import {IProfileSystem} from "@/screens/profile-system/types/IProfileSystem";
+import {IProfileSystem} from "@/screens/profile-system/types/profile-system/IProfileSystem";
 import {ProfileSystemService} from "@/services/profile-system/profile-system.service";
 
 export const useProfileSystem = () => {

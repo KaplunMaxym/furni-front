@@ -5,7 +5,7 @@ import { ArrowLeft } from 'lucide-react';
 import Canvas3DAdvanced from './canvas/Canvas3DAdvanced';
 import ParametersPanel, {
     CutDefaultParameters,
-    DrillDefaultParameters,
+    DrillDefaultParameters, HingeDefaultParameters,
     MillDefaultParameters
 } from './panels/ParametersPanel';
 import PartsList from './panels/PartsList';
@@ -21,6 +21,7 @@ import {
 } from "@/screens/construction/type/editor/ThreeMesh";
 import {useConstructionUpdateMutation} from "@/screens/construction/hooks/construction/useConstructionUpdateMutation";
 import {HandleSideEnum, IConstruction} from "@/screens/construction/type/construction/IConstruction";
+import {FocusedHoleKey} from "@/screens/construction/type/editor/FocusedHole";
 
 interface ConstructionEditorPropsExtended extends ConstructionEditorProps {
     onRefetch?: () => Promise<IConstruction | null>;
@@ -30,9 +31,9 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
     const [frameWidth, setFrameWidth] = useState<number>(construction.width || 523);
     const [frameHeight, setFrameHeight] = useState<number>(construction.height || 400);
     const [beamThickness, setBeamThickness] = useState<number>(construction.beamThickness || 22);
-    const [sawThickness, setSawThickness] = useState<number>(construction.sawThickness || 1.344);
     const [isAnyModalOpen, setIsAnyModalOpen] = useState(false);
 
+    const [hingeSide, setHingeSide] = useState<HandleSideEnum | undefined>(construction.hingeSide ?? undefined);
     const [hasHandle, setHasHandle] = useState<boolean>(construction.hasHandle || false);
     const [handleSide, setHandleSide] = useState<HandleSideEnum | undefined>(construction.handleSide ?? undefined);
     const [handleOffset, setHandleOffset] = useState<number | undefined>(construction.handleOffset ? Number(construction.handleOffset) : undefined);
@@ -59,10 +60,16 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
             : construction.cutParams as CutDefaultParameters;
     });
 
+    const [hingeParams, setHingeParams] = useState<HingeDefaultParameters | undefined>(() => {
+        if (!construction.hingeParams) return undefined;
+        return typeof construction.hingeParams === 'string'
+            ? JSON.parse(construction.hingeParams)
+            : construction.hingeParams as HingeDefaultParameters;
+    });
+
     const [confirmedFrameWidth, setConfirmedFrameWidth] = useState<number>(construction.width || 523);
     const [confirmedFrameHeight, setConfirmedFrameHeight] = useState<number>(construction.height || 400);
     const [confirmedBeamThickness, setConfirmedBeamThickness] = useState<number>(construction.beamThickness || 22);
-    const [confirmedSawThickness, setConfirmedSawThickness] = useState<number>(construction.sawThickness || 1.344);
 
     const [panelKey, setPanelKey] = useState<number>(0);
 
@@ -74,6 +81,8 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
     const [transformMode, setTransformMode] = useState<TransformMode>('none');
 
     const [gcodeData, setGcodeData] = useState<GcodeData | null>(null);
+
+    const [focusedHole, setFocusedHole] = useState<FocusedHoleKey>(null);
 
     const { mutateAsync: updateConstruction, isPending: isUpdating } = useConstructionUpdateMutation();
 
@@ -118,8 +127,9 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
                 width: frameWidth,
                 height: frameHeight,
                 beamThickness: beamThickness,
-                sawThickness: sawThickness,
                 hasHandle: hasHandle,
+                hingeSide: hingeSide,
+                hingeParams: hingeParams,
                 handleSide: handleSide,
                 handleOffset: handleOffset,
                 handlePosition: handlePosition,
@@ -132,7 +142,6 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
             setConfirmedFrameWidth(frameWidth);
             setConfirmedFrameHeight(frameHeight);
             setConfirmedBeamThickness(beamThickness);
-            setConfirmedSawThickness(sawThickness);
 
             if (onRefetch) {
                 const updated = await onRefetch();
@@ -146,10 +155,18 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
                     const freshCut = updated.cutParams
                         ? (typeof updated.cutParams === 'string' ? JSON.parse(updated.cutParams) : updated.cutParams)
                         : undefined;
+                    const freshHinge = updated.hingeParams
+                        ? (typeof updated.hingeParams === 'string' ? JSON.parse(updated.hingeParams) : updated.hingeParams)
+                        : undefined;
 
                     if (freshDrill) setDrillParams(freshDrill);
                     if (freshMill)  setMillParams(freshMill);
-                    if (freshCut) setCutParams(freshCut);
+                    if (freshCut)   setCutParams(freshCut);
+                    if (freshHinge) setHingeParams(freshHinge);
+
+                    if (updated.hingeSide !== undefined) {
+                        setHingeSide(updated.hingeSide ?? undefined);
+                    }
 
                     setPanelKey(prev => prev + 1);
                 }
@@ -158,7 +175,13 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
             console.error('Помилка при оновленні конструкції:', error);
             throw error;
         }
-    }, [frameWidth, frameHeight, beamThickness, millParams, sawThickness, drillParams, hasHandle, handleSide, handleOffset, handlePosition, construction, updateConstruction, order, onRefetch]);
+    }, [
+        frameWidth, frameHeight, beamThickness,
+        hasHandle, handleSide, handleOffset, handlePosition,
+        hingeSide, hingeParams,
+        drillParams, millParams, cutParams,
+        construction, updateConstruction, order, onRefetch,
+    ]);
 
     const handleOpenGcodeFromOperation = useCallback((gcode: string, fileName: string, operationId: number, operationTitle: string) => {
         setGcodeData({
@@ -167,11 +190,11 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
             partName: operationTitle,
             beamLength: 0,
             beamThickness: confirmedBeamThickness,
-            sawThickness: confirmedSawThickness
+            sawThickness: 0
         });
         setIsAnyModalOpen(true);
         modalGcode.onOpen();
-    }, [confirmedBeamThickness, confirmedSawThickness, modalGcode]);
+    }, [confirmedBeamThickness, modalGcode]);
 
     const handleSelectMesh = useCallback((mesh: ConstructionMesh): void => {
         setSelectedMesh(mesh);
@@ -198,7 +221,6 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
                         frameWidth={confirmedFrameWidth}
                         frameHeight={confirmedFrameHeight}
                         beamThickness={confirmedBeamThickness}
-                        sawThickness={confirmedSawThickness}
                         viewMode={viewMode}
                         transformMode={transformMode}
                         onMeshesUpdate={handleMeshesUpdate}
@@ -207,11 +229,16 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
                         profileSystemFileUrl={profileSystemFileUrl}
                         hasHandle={hasHandle}
                         handleSide={handleSide}
+                        hingeSide={hingeSide}
+                        hingeParams={hingeParams}
                         handleOffset={handleOffset}
                         handlePosition={handlePosition}
                         drillParams={drillParams}
+                        cutParams={cutParams}
                         millParams={millParams}
                         hideDimensions={isAnyModalOpen}
+                        focusedHole={focusedHole}
+                        onHoleHover={setFocusedHole}
                     />
                 </div>
 
@@ -226,14 +253,14 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
                         setMillParams={setMillParams}
                         cutParams={cutParams}
                         setCutParams={setCutParams}
+                        hingeParams={hingeParams}
+                        setHingeParams={setHingeParams}
                         frameWidth={frameWidth}
                         setFrameWidth={setFrameWidth}
                         frameHeight={frameHeight}
                         setFrameHeight={setFrameHeight}
                         beamThickness={beamThickness}
                         setBeamThickness={setBeamThickness}
-                        sawThickness={sawThickness}
-                        setSawThickness={setSawThickness}
                         hasHandle={hasHandle}
                         setHasHandle={setHasHandle}
                         handleSide={handleSide}
@@ -244,6 +271,10 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
                         setHandlePosition={setHandlePosition}
                         onUpdate={handleUpdateModel}
                         isUpdating={isUpdating}
+                        hingeSide={hingeSide}
+                        setHingeSide={setHingeSide}
+                        onHoleInputFocus={setFocusedHole}
+                        focusedHole={focusedHole}
                     />
 
                     {order && (

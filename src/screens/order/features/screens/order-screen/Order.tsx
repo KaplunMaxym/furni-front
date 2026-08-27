@@ -1,8 +1,7 @@
 import {useOrderQuery} from "@/screens/order/hooks/order/useOrderQuery";
 import {useOrderFilterStore} from "@/store/order/order-store/useOrderFilter";
 import useModal from "@/hooks/useModal";
-import {useState} from "react";
-import {IOrder} from "@/screens/order/types/order/IOrder";
+import React, {useState} from "react";
 import ToggleOrder from "@/screens/order/shared/toggle-order";
 import SelectorSearch from "@/componets/select/virtualized-list/SelectorSearch";
 import Button from "@/ui/button/Button";
@@ -23,6 +22,8 @@ import {useClient} from "@/screens/client/hooks/useClient";
 import Input from "@/ui/input/Input";
 import {useForm} from "react-hook-form";
 import {IOrderFilterForm} from "@/screens/order/types/order/IOrderFilterForm";
+import {IOrderQuery} from "@/screens/order/types/order/IOrderQuery";
+import {PRICE_CATEGORIES} from "@/screens/order/types/order/IOrderForm";
 
 const Order = () => {
     const {control} = useForm<IOrderFilterForm>()
@@ -42,8 +43,9 @@ const Order = () => {
 
     const modalCreateOrder = useModal();
 
-    const [selectedOrder, setSelectedOrder] = useState<IOrder | null>(null);
+    const [selectedOrder, setSelectedOrder] = useState<IOrderQuery | null>(null);
     const [selectedOrderStatus, setSelectedOrderStatus] = useState<Record<string, number>>({});
+    const [selectedPriceCategory, setSelectedPriceCategory] = useState<Record<number, string>>({});
 
     const { mutateAsync: mutateAsyncUpdateOrder } = useOrderUpdateMutation();
 
@@ -56,12 +58,12 @@ const Order = () => {
 
     const { totalPages, currentPage } = meta;
 
-    const onEdit = (order: IOrder) => {
+    const onEdit = (order: IOrderQuery)  => {
         setSelectedOrder(order);
         modalCreateOrder.onOpen();
     };
 
-    const onView = (order: IOrder) => {
+    const onView = (order: IOrderQuery) => {
         navigate(`/order/${order.id}`);
     };
 
@@ -150,6 +152,7 @@ const Order = () => {
                                 <th>Назва</th>
                                 <th>Клієнт</th>
                                 <th>Статус</th>
+                                <th>Категорія</th>
                                 <th>Створено</th>
                                 <th className={"w-[120px]"}></th>
                             </TrHead>
@@ -200,6 +203,33 @@ const Order = () => {
                                         ) : (
                                             <span className="text-gray-400">Завантаження...</span>
                                         )}
+                                    </td>
+                                    <td className={'!max-w-[160px] !p-0'}>
+                                        <SelectorSearch
+                                            getAndSet={[
+                                                selectedPriceCategory[item.id] ?? item.priceCategory ?? 'REPRESENTATIVE',
+                                                async (value: string) => {
+                                                    if (!value) return;
+                                                    setSelectedPriceCategory(prev => ({ ...prev, [item.id]: value }));
+                                                    try {
+                                                        await mutateAsyncUpdateOrder({ priceCategory: value, id: item.id });
+                                                    } catch (error) {
+                                                        console.error('Error updating price category:', error);
+                                                        setSelectedPriceCategory(prev => {
+                                                            const updated = { ...prev };
+                                                            delete updated[item.id];
+                                                            return updated;
+                                                        });
+                                                    }
+                                                }
+                                            ]}
+                                            options={PRICE_CATEGORIES}
+                                            placeholder={'Категорія'}
+                                            optionValue="value"
+                                            optionLabel="label"
+                                            isEmptyValueDisable={true}
+                                            searchable={false}
+                                        />
                                     </td>
                                     <td>{formatDateTime(item.createdAt)}</td>
                                     <td className={"!p-0 flex flex-row g-2"}>

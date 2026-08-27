@@ -14,6 +14,7 @@ export const useConstructionUpdateMutation = () => {
             await queryClient.invalidateQueries({ queryKey: ['construction-details', id] })
             if (orderId) {
                 await queryClient.invalidateQueries({ queryKey: ['get-construction-by-order', orderId]})
+                await queryClient.invalidateQueries({ queryKey: ['get-order-details', orderId]})
             }
         },
         onError: async (_, { id, orderId }) => {
@@ -22,6 +23,7 @@ export const useConstructionUpdateMutation = () => {
             await queryClient.invalidateQueries({ queryKey: ['construction-details', id] })
             if (orderId) {
                 await queryClient.invalidateQueries({ queryKey: ['get-construction-by-order', orderId]})
+                await queryClient.invalidateQueries({ queryKey: ['get-order-details', orderId]})
             }
         },
     })

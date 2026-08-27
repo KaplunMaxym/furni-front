@@ -6,7 +6,7 @@ import {VitePWA} from 'vite-plugin-pwa'
 export default defineConfig({
     plugins: [react(), VitePWA({
         workbox: {
-            maximumFileSizeToCacheInBytes: 3000000
+            maximumFileSizeToCacheInBytes: 10 * 1024 * 1024
         },
         registerType: 'autoUpdate',
         includeAssets: ['favicon.ico'],

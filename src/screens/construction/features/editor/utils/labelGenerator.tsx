@@ -12,6 +12,7 @@ export interface LabelData {
     detailName?: string;
     serialNumber: string;
     orderNumber: string;
+    constructionNumber: string;
     detailNumber: string;
     handleSide?: string | null;
 }
@@ -48,12 +49,13 @@ export const generateConstructionPdf = async (construction: IConstruction, order
 
         const labelData: LabelData = {
             clientName: `${order.client.firstName} ${order.client.lastName}`,
-            detailName: detail.name,
+            detailName: `R${detail.sequence} ${detail.name}`,
             constructionSize: getConstructionSize(construction, detail),
             detailSize: detail.type === DetailType.GLASS ? null : (detail.length ?? null),
             serialNumber: order.orderNumber + construction.constructionNo + detail.detailNo,
             detailNumber: detail.detailNo,
             orderNumber: order.orderNumber,
+            constructionNumber: construction.constructionNo,
             handleSide: isHandleBeam ? (construction.handleSide ?? null) : null,
         };
 
@@ -207,6 +209,7 @@ export const printSingleLabel = (data: LabelData): void => {
                 <div class="label-info">
                     <div class="client">${data.clientName}</div>
                     <div class="row"><b>Номер Замовлення:</b> ${data.orderNumber}</div>
+                    <div class="row"><b>Номер Конструкції:</b> ${data.constructionNumber}</div>
                     <div class="row"><b>Номер Деталі:</b> ${data.detailNumber}</div>
                     ${data.detailName ? `<div class="row"><b>Деталь:</b> ${data.detailName}</div>` : ''}
                     <div class="row"><b>Розмір:</b> ${data.constructionSize}</div>
@@ -249,6 +252,84 @@ export const printSingleLabel = (data: LabelData): void => {
     `);
 
     printWindow.document.close();
+};
+
+export const generateSingleDetailLabelPdf = async (
+    construction: IConstruction,
+    order: IOrder,
+    detail: IConstructionDetails,
+): Promise<Blob | null> => {
+    if (!detail.requiresLabel) return null;
+
+    const labelWidth = 100;
+    const labelHeight = 25;
+
+    const handleBeamName = construction.handleSide
+        ? handleSideToBeamName[construction.handleSide]
+        : null;
+    const isHandleBeam = !!handleBeamName && detail.name === handleBeamName;
+
+    const labelData: LabelData = {
+        clientName: `${order.client.firstName} ${order.client.lastName}`,
+        detailName: `R${detail.sequence} ${detail.name}`,
+        constructionSize: getConstructionSize(construction, detail),
+        detailSize: detail.type === DetailType.GLASS ? null : (detail.length ?? null),
+        serialNumber: order.orderNumber + construction.constructionNo + detail.detailNo,
+        detailNumber: detail.detailNo,
+        orderNumber: order.orderNumber,
+        constructionNumber: construction.constructionNo,
+        handleSide: isHandleBeam ? (construction.handleSide ?? null) : null,
+    };
+
+    const element = await renderLabelComponent(labelData);
+    const img = await convertLabelToImage(element);
+
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [labelWidth, labelHeight] });
+    pdf.addImage(img, 'PNG', 0, 0, labelWidth, labelHeight);
+
+    return pdf.output('blob');
+};
+
+export const generateBarLabelsPdf = async (
+    order: IOrder,
+    items: Array<{ construction: IConstruction; detail: IConstructionDetails }>,
+): Promise<Blob | null> => {
+    const labelWidth = 100;
+    const labelHeight = 25;
+
+    const validItems = items.filter(({ detail }) => detail.requiresLabel);
+    if (validItems.length === 0) return null;
+
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [labelWidth, labelHeight] });
+    let isFirstPage = true;
+
+    for (const { construction, detail } of validItems) {
+        const handleBeamName = construction.handleSide
+            ? handleSideToBeamName[construction.handleSide]
+            : null;
+        const isHandleBeam = !!handleBeamName && detail.name === handleBeamName;
+
+        const labelData: LabelData = {
+            clientName: `${order.client.firstName} ${order.client.lastName}`,
+            detailName: `R${detail.sequence} ${detail.name}`,
+            constructionSize: getConstructionSize(construction, detail),
+            detailSize: detail.type === DetailType.GLASS ? null : (detail.length ?? null),
+            serialNumber: order.orderNumber + construction.constructionNo + detail.detailNo,
+            detailNumber: detail.detailNo,
+            orderNumber: order.orderNumber,
+            constructionNumber: construction.constructionNo,
+            handleSide: isHandleBeam ? (construction.handleSide ?? null) : null,
+        };
+
+        const element = await renderLabelComponent(labelData);
+        const img = await convertLabelToImage(element);
+
+        if (!isFirstPage) pdf.addPage([labelWidth, labelHeight]);
+        pdf.addImage(img, 'PNG', 0, 0, labelWidth, labelHeight);
+        isFirstPage = false;
+    }
+
+    return pdf.output('blob');
 };
 
 export const generateLabelForZip = async (data: LabelData): Promise<{ imageData: string; base64: string }> => {

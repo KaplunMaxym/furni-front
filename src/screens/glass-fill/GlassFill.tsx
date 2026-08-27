@@ -16,15 +16,19 @@ import {useGlassFillQuery} from "@/screens/glass-fill/hooks/useGlassFillQuery";
 import useModal from "@/hooks/useModal";
 import {IGlassFill} from "@/screens/glass-fill/types/IGlassFill";
 import GlassFillCreateModal from "@/screens/glass-fill/features/modals/modal-create-glass-fill";
+import GlassPricesModal from "@/screens/glass-fill/features/modals/modal-glass-prices";
 
 const GlassFill = () => {
     const { data: dataGlassFill, isPending: isPendingGlassFill } = useGlassFillQuery();
     const { mutateAsync: mutateAsyncGlassFillDel } = useGlassFillDelMutation();
 
     const { page, setPage, limit, setLimit } = useGlassFillFilterStore();
+
     const modalCreateGlassFill = useModal();
+    const modalGlassPrices = useModal();
 
     const [selectedGlassFill, setSelectedGlassFill] = useState<IGlassFill | null>(null);
+    const [selectedPricesGlassFill, setSelectedPricesGlassFill] = useState<IGlassFill | null>(null);
 
     const meta = dataGlassFill?.meta || {
         totalItems: 0,
@@ -32,6 +36,10 @@ const GlassFill = () => {
         currentPage: page,
         limit: 20,
     };
+
+    const selectedForPricesActual = selectedPricesGlassFill
+        ? dataGlassFill?.glassFill.find(m => m.id === selectedPricesGlassFill.id) ?? selectedPricesGlassFill
+        : null;
 
     const { totalPages, currentPage } = meta;
 
@@ -47,6 +55,16 @@ const GlassFill = () => {
     const handleModalClose = () => {
         setSelectedGlassFill(null);
         modalCreateGlassFill.onClose();
+    };
+
+    const onOpenPrices = (glassFill: IGlassFill) => {
+        setSelectedPricesGlassFill(glassFill);
+        modalGlassPrices.onOpen();
+    };
+
+    const handlePricesModalClose = () => {
+        setSelectedPricesGlassFill(null);
+        modalGlassPrices.onClose();
     };
 
     return (
@@ -79,6 +97,7 @@ const GlassFill = () => {
                             <TrHead>
                                 <th>Тип</th>
                                 <th>Товщина</th>
+                                <th>Ціни</th>
                                 <th className={"w-[120px]"}></th>
                             </TrHead>
                             </thead>
@@ -87,6 +106,16 @@ const GlassFill = () => {
                                 <TrBody key={item.id}>
                                     <td>{item.type}</td>
                                     <td>{item.thickness?.toString() || '-'}</td>
+                                    <td>
+                                        <button
+                                            onClick={() => onOpenPrices(item)}
+                                            className="text-xs text-[#0094D5] hover:underline"
+                                        >
+                                            {item.glassPrices.length > 0
+                                                ? `${item.glassPrices.length} / 5 категорій`
+                                                : 'Не задано'}
+                                        </button>
+                                    </td>
                                     <td className={"!p-0 flex flex-row g-2"}>
                                         <Button
                                             className={"min-h-[36px] w-fit"}
@@ -140,6 +169,12 @@ const GlassFill = () => {
                 {...modalCreateGlassFill}
                 glassFill={selectedGlassFill}
                 onClose={handleModalClose}
+            />
+
+            <GlassPricesModal
+                {...modalGlassPrices}
+                glassFill={selectedForPricesActual}
+                onClose={handlePricesModalClose}
             />
 
         </MainLayout>

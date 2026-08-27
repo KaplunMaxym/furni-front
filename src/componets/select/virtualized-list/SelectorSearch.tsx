@@ -16,9 +16,10 @@ interface ISelectorProps<T> extends ComponentProps<'div'> {
     searchable?: boolean;
     allowClear?: boolean;
     dropdownPosition?: 'top' | 'bottom';
+    hasError?: boolean;
 }
 
-const SelectorSearch = <T,>({options, optionValue, optionLabel, className, placeholder, getAndSet, isEmptyValueDisable = false, label = '', isBlackDefault = false, searchable = true, allowClear = false, dropdownPosition: initialDropdownPosition, ...rest}: ISelectorProps<T>) => {
+const SelectorSearch = <T,>({options, optionValue, hasError = false, optionLabel, className, placeholder, getAndSet, isEmptyValueDisable = false, label = '', isBlackDefault = false, searchable = true, allowClear = false, dropdownPosition: initialDropdownPosition, ...rest}: ISelectorProps<T>) => {
     const [state, setState] = getAndSet;
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
@@ -267,7 +268,8 @@ const SelectorSearch = <T,>({options, optionValue, optionLabel, className, place
                     className={cn(
                         'px-4 h-[40px] font-medium rounded-[12px] outline-none text-base bg-react/500 w-full pr-10',
                         !state && !isBlackDefault && 'text-react/300',
-                        searchable ? 'cursor-text' : 'cursor-pointer'
+                        searchable ? 'cursor-text' : 'cursor-pointer',
+                        hasError && 'border-2 border-red/500'
                     )}
                 />
                 <img

@@ -4,6 +4,7 @@ export interface IOrderQuery {
     orderNumber: string;
     createdAt: string;
     clientId: string;
+    priceCategory: string;
     client: {
         id: number;
         firstName: string;
