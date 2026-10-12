@@ -1,14 +1,11 @@
 import MainLayout from "@/ui/layouts/main-layout/MainLatout";
 import {useGlassFillDelMutation} from "@/screens/glass-fill/hooks/useGlassFillDelMutation";
 import {useGlassFillFilterStore} from "@/store/glass-fill/useGlassFillFilter";
-import SelectorSearch from "@/componets/select/virtualized-list/SelectorSearch";
 import Button from "@/ui/button/Button";
 import PlusSvg from "@/assets/plusSvg";
 import {Table} from "@/ui/table/table";
 import {TrHead} from "@/ui/table/tr-head";
 import {TrBody} from "@/ui/table/tr-body";
-import {EditSvg, refreshIcon} from "@/assets";
-import ButtonDel from "@/ui/button/ButtonDel";
 import {cn} from "@/helpers/cn";
 import PaginationControl from "@/componets/pagination/Pagination";
 import React, {useState} from "react";
@@ -17,12 +14,27 @@ import useModal from "@/hooks/useModal";
 import {IGlassFill} from "@/screens/glass-fill/types/IGlassFill";
 import GlassFillCreateModal from "@/screens/glass-fill/features/modals/modal-create-glass-fill";
 import GlassPricesModal from "@/screens/glass-fill/features/modals/modal-glass-prices";
+import RowActionsCell from '@/ui/table/RowActionsCell';
+import PricesCell from '@/ui/prices/PricesCell';
+import { PRICE_CATEGORIES } from '@/screens/glass-fill/types/IGlassPrice';
+import FiltersBar from '@/ui/filters/FiltersBar';
+import TableStateRows from '@/ui/table/TableStateRows';
+import PageHeader from "@/ui/page-header/PageHeader";
+import SortableTh from '@/ui/table/SortableTh';
+
+/** Скільки колонок у таблиці — для colSpan службових рядків. */
+const COLUMN_COUNT = 5;
 
 const GlassFill = () => {
-    const { data: dataGlassFill, isPending: isPendingGlassFill } = useGlassFillQuery();
+    const {
+        data: dataGlassFill,
+        isPending: isPendingGlassFill,
+        isFetching: isFetchingGlassFill,
+    } = useGlassFillQuery();
     const { mutateAsync: mutateAsyncGlassFillDel } = useGlassFillDelMutation();
 
-    const { page, setPage, limit, setLimit } = useGlassFillFilterStore();
+    const { page, setPage, limit, setLimit, search, setSearch, resetFilters, sortBy, sortOrder, setSort } =
+        useGlassFillFilterStore();
 
     const modalCreateGlassFill = useModal();
     const modalGlassPrices = useModal();
@@ -41,7 +53,7 @@ const GlassFill = () => {
         ? dataGlassFill?.glassFill.find(m => m.id === selectedPricesGlassFill.id) ?? selectedPricesGlassFill
         : null;
 
-    const { totalPages, currentPage } = meta;
+    const { totalItems, totalPages, currentPage } = meta;
 
     const onDelete = async (id: number) => {
         await mutateAsyncGlassFillDel({ id });
@@ -70,33 +82,44 @@ const GlassFill = () => {
     return (
         <MainLayout>
             <div className={"flex flex-col gap-3 w-full"}>
-                <div className={"flex gap-4 justify-between items-end"}>
-                    <div className={"flex flex-row gap-4"}>
-                        <SelectorSearch
-                            getAndSet={[limit, setLimit]}
-                            searchable={false}
-                            className={'w-[80px]'}
-                            options={[20, 40, 60, 80]}
-                        />
-                    </div>
-                    <Button
-                        className={"w-auto mx-0 py-0 h-[40px]"}
-                        color={"greenDarkgreen"}
-                        onClick={() => {
-                            modalCreateGlassFill.onOpen();
-                        }}
-                    >
-                        <PlusSvg width={20} height={20} /> Додати заповнення
-                    </Button>
-                </div>
+                <PageHeader
+                    title="Скло"
+                    description="Заповнення конструкцій та ціни за квадратний метр"
+                />
+
+                <FiltersBar
+                    search={search}
+                    onSearchChange={setSearch}
+                    searchPlaceholder="Назва скла або код 1С"
+                    hasFilters={!!search}
+                    onReset={resetFilters}
+                    action={
+                        <Button
+                            className={"w-auto mx-0 py-0 h-[40px]"}
+                            color={"greenDarkgreen"}
+                            onClick={() => {
+                                modalCreateGlassFill.onOpen();
+                            }}
+                        >
+                            <PlusSvg width={20} height={20} /> Додати заповнення
+                        </Button>
+                    }
+                />
 
                 <div className="flex items-center flex-col justify-center gap-5 overflow-hidden">
-                    <div className={"overflow-x-auto w-full"}>
+                    {/* Під час підвантаження показуємо старі рядки приглушено */}
+                    <div
+                        className={cn(
+                            'w-full transition-opacity',
+                            isFetchingGlassFill && !isPendingGlassFill && 'opacity-60',
+                        )}
+                    >
                         <Table>
                             <thead>
                             <TrHead>
-                                <th>Тип</th>
-                                <th>Товщина</th>
+                                <SortableTh field="type" sortBy={sortBy} sortOrder={sortOrder} onSort={setSort}>Тип</SortableTh>
+                                <SortableTh field="code1C" sortBy={sortBy} sortOrder={sortOrder} onSort={setSort}>Код 1С</SortableTh>
+                                <SortableTh field="thickness" sortBy={sortBy} sortOrder={sortOrder} onSort={setSort}>Товщина</SortableTh>
                                 <th>Ціни</th>
                                 <th className={"w-[120px]"}></th>
                             </TrHead>
@@ -105,53 +128,31 @@ const GlassFill = () => {
                             {dataGlassFill?.glassFill.map((item) => (
                                 <TrBody key={item.id}>
                                     <td>{item.type}</td>
-                                    <td>{item.thickness?.toString() || '-'}</td>
+                                    <td className="font-mono text-sm text-muted-foreground">{item.code1C}</td>
+                                    <td>{item.thickness != null ? `${item.thickness} мм` : null}</td>
                                     <td>
-                                        <button
+                                        <PricesCell
+                                            filled={item.glassPrices.length}
+                                            total={PRICE_CATEGORIES.length}
                                             onClick={() => onOpenPrices(item)}
-                                            className="text-xs text-[#0094D5] hover:underline"
-                                        >
-                                            {item.glassPrices.length > 0
-                                                ? `${item.glassPrices.length} / 5 категорій`
-                                                : 'Не задано'}
-                                        </button>
+                                        />
                                     </td>
-                                    <td className={"!p-0 flex flex-row g-2"}>
-                                        <Button
-                                            className={"min-h-[36px] w-fit"}
-                                            color="greenDarkgreen"
-                                            onClick={() => onEdit(item)}
-                                        >
-                                            <img
-                                                src={EditSvg}
-                                                alt={"редагувати"}
-                                                className="w-4 h-4"
-                                            />
-                                        </Button>
-
-                                        <ButtonDel
-                                            onClick={() => onDelete(item.id)}
-                                            className={"min-h-[36px]"}
+                                    <td className="w-[60px]">
+                                        <RowActionsCell
+                                            onEdit={() => onEdit(item)}
+                                            onDelete={() => onDelete(item.id)}
                                         />
                                     </td>
                                 </TrBody>
                             ))}
-                            {isPendingGlassFill && (
-                                <TrBody>
-                                    <td colSpan={5}>
-                                        <div
-                                            className={cn(
-                                                "w-full h-6 animate-spin flex justify-center"
-                                            )}
-                                        >
-                                            <img
-                                                src={refreshIcon}
-                                                alt={"оновлення"}
-                                            />
-                                        </div>
-                                    </td>
-                                </TrBody>
-                            )}
+                            <TableStateRows
+                                columnCount={COLUMN_COUNT}
+                                isPending={isPendingGlassFill}
+                                isEmpty={dataGlassFill?.glassFill.length === 0}
+                                hasFilters={!!search}
+                                onReset={resetFilters}
+                                emptyLabel="Заповнень ще немає"
+                            />
                             </tbody>
                         </Table>
                     </div>
@@ -161,6 +162,9 @@ const GlassFill = () => {
                     currentPage={currentPage}
                     totalPages={totalPages}
                     onPageChange={setPage}
+                    totalItems={totalItems}
+                    limit={limit}
+                    onLimitChange={setLimit}
                     disabled={isPendingGlassFill}
                 />
             </div>

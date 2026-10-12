@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { useNavigateWithParams } from "@/utils/useNavigate/useNavigateWithParams";
 import { useQueryParams } from "@/utils/useQueryParams/useQueryParams";
 import { useEffect, useRef } from "react";
-import {useMainOrderFilterStore} from "@/store/order/useMainOrderFilterStore";
 
 interface IOrderStatusPageState {
     page: number;
@@ -18,7 +17,7 @@ interface IOrderStatusPageAction {
 
 const defaultState: IOrderStatusPageState = {
     page: 1,
-    limit: '20',
+    limit: '100',
 };
 
 export const useOrderStatusPageStore = create<IOrderStatusPageState & IOrderStatusPageAction>((set) => ({
@@ -35,32 +34,24 @@ export const useOrderStatusPageStore = create<IOrderStatusPageState & IOrderStat
 
 export const useOrderStatusFilterStore = () => {
     const store = useOrderStatusPageStore();
-    const { isToggle } = useMainOrderFilterStore();
     const stateJson = JSON.stringify(store);
     const state = JSON.parse(stateJson);
-    const navTo = useNavigateWithParams<IOrderStatusPageState & { isToggle: string }>();
-    const params = useQueryParams<IOrderStatusPageState & { isToggle: string }>();
+    const navTo = useNavigateWithParams<IOrderStatusPageState>();
+    const params = useQueryParams<IOrderStatusPageState>();
     const prevState = useRef(state);
-    const isActive = isToggle === 'order-status';
 
     useEffect(() => {
-        if (!isActive) {
-            prevState.current = state;
-            return;
-        }
-
         const stateChanged = JSON.stringify(prevState.current) !== JSON.stringify(state);
 
         if (stateChanged) {
             navTo('', {
-                isToggle: 'order-status',
                 page: state.page,
                 limit: state.limit
             }, false);
         }
 
         prevState.current = state;
-    }, [stateJson, isActive]);
+    }, [stateJson]);
 
     return { ...store, navTo, searchParams: params };
 };

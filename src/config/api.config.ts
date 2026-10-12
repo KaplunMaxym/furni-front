@@ -22,6 +22,8 @@ export const getClientsUrl = () => '/client/all-client'
 export const getClientsSimpleUrl = () => '/client/all-client-simple'
 export const deleteClient = (id: number) => `/client/delete-client/${id}`
 export const createClient = () => '/client/create-client'
+/** Клієнт + вхід до нього однією дією. */
+export const createDealer = () => '/client/create-dealer'
 export const updateClient = (id: number) => `/client/update-client/${id}`
 
 // Order
@@ -60,6 +62,9 @@ export const deleteConstruction = (id: number) => `/construction/delete-construc
 
 // Construction Status
 export const getConstructionStatus = () => '/construction/all-construction-status'
+export const createConstructionStatus = () => '/construction/create-construction-status'
+export const updateConstructionStatus = (id: number) => `/construction/update-construction-status/${id}`
+export const deleteConstructionStatus = (id: number) => `/construction/delete-construction-status/${id}`
 
 // Construction Details
 export const getConstructionDetails = (constructionId: number) => `/construction/all-construction-details/${constructionId}`
@@ -146,3 +151,15 @@ export const getColorsUrl = () => '/catalog/colors';
 export const createColorUrl = () => '/catalog/colors';
 export const updateColorUrl = (id: number) => `/catalog/colors/${id}`;
 export const deleteColorUrl = (id: number) => `/catalog/colors/${id}`;
+
+// Обмін з 1С
+export const integration1CPreviewUrl = (orderId: number) => `/integration-1c/order/${orderId}/preview`;
+export const integration1CHistoryUrl = (orderId: number) => `/integration-1c/order/${orderId}/history`;
+export const integration1CLogsUrl = () => '/integration-1c/log/all-log';
+export const integration1CLogUrl = (id: number) => `/integration-1c/log/get-log/${id}`;
+export const cutBatchesUrl = () => '/integration-1c/cut-batch/all-batch';
+export const cutBatchUrl = (id: number) => `/integration-1c/cut-batch/get-batch/${id}`;
+
+// Дашборд
+export const dashboardOverviewUrl = () => '/dashboard/overview';
+export const dashboardAttentionUrl = () => '/dashboard/attention';

@@ -9,7 +9,6 @@ import {useForm} from "react-hook-form";
 import Button from "@/ui/button/Button";
 import Loading from "@/ui/loading/Loading";
 import SelectorSearch from "@/componets/select/virtualized-list/SelectorSearch";
-import {useConstructionStatus} from "@/screens/construction/hooks/construction-status/useConstructionStatus";
 import {HandleSideEnum} from "@/screens/construction/type/construction/IConstruction";
 import {useGlassFill} from "@/screens/glass-fill/hooks/useGlassFill";
 import {useProfileSystem} from "@/screens/profile-system/hooks/useProfileSystem";
@@ -19,11 +18,19 @@ import {useConstructionUpdateMutation} from "@/screens/construction/hooks/constr
 import {IConstructionForm} from "@/screens/construction/type/construction/IConstructionForm";
 import {ToggleBtn} from "@/ui/toggles/toggle-btn";
 import {useOrder} from "@/screens/order/hooks/order/useOrder";
-import {useHandleColors, useProfileColors} from "@/screens/catalog/hooks/useColor";
+import {useProfileColors} from "@/screens/catalog/hooks/useColor";
+import {useConstructionStatus} from "@/screens/construction/hooks/construction-status/useConstructionStatus";
+import {useConstructionByOrder} from "@/screens/construction/hooks/construction/useConstructionByOrder";
+import {useAuthStore} from "@/store/auth/authReducer";
+import {isDealerRole} from "@/config/RoleEnum";
+import {CONSTRUCTION_HINTS} from "@/constants/paramHints";
 
 interface IConstruction extends IConstructionForm {
     id: number;
 }
+
+const HANDLE_WIDTH_MM = 160;
+
 
 type IConstructionCreateModal = ModalProps & {
     construction?: IConstruction | null;
@@ -34,30 +41,33 @@ const ConstructionCreateModal: FC<IConstructionCreateModal> = ({ construction, o
     const navigate = useNavigate();
     const isEditMode = !!construction && construction.id > 0;
 
+    const { role } = useAuthStore();
+    const isDealer = isDealerRole(role);
+
     const { data: dataOrder, isPending: isPendingOrder } = useOrder();
     const { data: dataProfileColors, isPending: isPendingProfileColors } = useProfileColors();
-    const { data: dataHandleColors, isPending: isPendingHandleColors } = useHandleColors();
     const { data: dataConstructionStatus, isPending: isPendingConstructionStatus } = useConstructionStatus();
     const { data: dataProfileSystem, isPending: isPendingProfileSystem } = useProfileSystem();
     const { data: dataGlassFill, isPending: isPendingGlassFill } = useGlassFill();
 
-    const { control, handleSubmit, reset, setError, clearErrors, formState: { errors }, setValue, watch } = useForm<IConstructionForm>({
+    const { control, handleSubmit, trigger, reset, setError, clearErrors, formState: { errors, isValid }, setValue, watch } = useForm<IConstructionForm>({
         defaultValues: {
             orderId: orderId || undefined,
             profileSystemId: undefined,
             constructionStatusId: undefined,
             width: 0,
             height: 0,
-            // sawThickness: 1.344,
             beamThickness: 22,
             glassFillId: undefined,
             hasGlassEdge: true,
             hasHandle: true,
+            hasHinge: true,
             handleSide: HandleSideEnum.LEFT,
-            handleOffset: 160,
+            hingeSide: HandleSideEnum.RIGHT,
+            handleOffset: HANDLE_WIDTH_MM,
             handlePosition: 0,
             colorId: undefined,
-            handleColorId: undefined
+            quantity: 1,
         },
         mode: 'onChange',
     });
@@ -65,7 +75,7 @@ const ConstructionCreateModal: FC<IConstructionCreateModal> = ({ construction, o
     const { mutateAsync: createConstruction, isPending: isCreating } = useConstructionCreateMutation();
     const { mutateAsync: updateConstruction, isPending: isUpdating } = useConstructionUpdateMutation();
 
-    const isPending = isCreating || isUpdating || isPendingConstructionStatus || isPendingProfileSystem || isPendingGlassFill || isPendingOrder || isPendingProfileColors || isPendingHandleColors;
+    const isPending = isCreating || isUpdating || (!isDealer && isPendingConstructionStatus) || isPendingProfileSystem || isPendingGlassFill || isPendingOrder || isPendingProfileColors;
 
     const formattedConstructionStatusOptions = dataConstructionStatus?.map(status => ({
         label: status.title,
@@ -92,11 +102,6 @@ const ConstructionCreateModal: FC<IConstructionCreateModal> = ({ construction, o
         value: color.id
     })) || [];
 
-    const formattedHandleColorOptions = dataHandleColors?.map(color => ({
-        label: color.name,
-        value: color.id
-    })) || [];
-
     const handleSideOptions = [
         { label: 'Ліво', value: HandleSideEnum.LEFT },
         { label: 'Право', value: HandleSideEnum.RIGHT },
@@ -116,19 +121,22 @@ const ConstructionCreateModal: FC<IConstructionCreateModal> = ({ construction, o
         if (construction && props.open) {
             setValue('orderId', construction.orderId || 0);
             setValue('profileSystemId', construction.profileSystemId || 0);
-            setValue('constructionStatusId', construction.constructionStatusId || 0);
             setValue('width', construction.width || 0);
             setValue('height', construction.height || 0);
-            // setValue('sawThickness', construction.sawThickness || 1.344);
             setValue('beamThickness', construction.beamThickness || 22);
             setValue('glassFillId', construction.glassFillId ? construction.glassFillId : undefined);
+            setValue('constructionStatusId', construction.constructionStatusId || 0);
             setValue('hasHandle', construction.hasHandle || false);
-            setValue('handleSide', construction.handleSide ? construction.handleSide : undefined);
-            setValue('handleOffset', construction.handleOffset || 160);
+            setValue('handleSide',
+                construction.handleSide
+                ?? construction.wireSide
+                ?? undefined);
+            setValue('hingeSide', construction.hingeSide ?? HandleSideEnum.RIGHT);
+            setValue('handleOffset', construction.handleOffset || HANDLE_WIDTH_MM);
             setValue('handlePosition', construction.handlePosition || 0);
-            setValue('hasGlassEdge', construction.hasGlassEdge || false);
+            setValue('hasHinge', !!construction.hingeSide);
+            setValue('hasGlassEdge', true);
             setValue('colorId', construction.colorId || undefined);
-            setValue('handleColorId', construction.handleColorId || undefined);
         } else if (!construction && props.open) {
             reset();
             if (orderId) {
@@ -157,6 +165,10 @@ const ConstructionCreateModal: FC<IConstructionCreateModal> = ({ construction, o
         }
     };
 
+    useEffect(() => {
+        if (props.open && isEditMode) void trigger();
+    }, [props.open, isEditMode, trigger]);
+
     const onSubmit = async (data: IConstructionForm) => {
         try {
             let hasError = false;
@@ -180,32 +192,36 @@ const ConstructionCreateModal: FC<IConstructionCreateModal> = ({ construction, o
 
             if (hasError) return;
 
+            const { hasHinge: _hasHinge, ...formData } = data;
+
             const submitData = {
-                ...data,
+                ...formData,
                 width: Number(data.width),
                 height: Number(data.height),
                 profileSystemId: Number(data.profileSystemId),
-                constructionStatusId: data.constructionStatusId ? Number(data.constructionStatusId) : undefined,
+                constructionStatusId: (!isDealer && data.constructionStatusId)
+                    ? Number(data.constructionStatusId)
+                    : undefined,
                 glassFillId: data.glassFillId ? Number(data.glassFillId) : null,
-                // sawThickness: Number(data.sawThickness),
                 beamThickness: Number(data.beamThickness),
                 orderId: Number(data.orderId),
-                hasGlassEdge: data.hasGlassEdge ?? false,
+                hasGlassEdge: true,
+                quantity: isDealer ? 1 : Math.max(1, Number(data.quantity) || 1),
                 hasHandle: isHingeProfile ? false : data.hasHandle,
-                handleSide: isHingeProfile ? undefined : (data.hasHandle ? data.handleSide : undefined),
-                hingeSide: isHingeProfile ? data.handleSide : undefined,
-                handleOffset: isHingeProfile ? 0 : (data.hasHandle ? Number(data.handleOffset || 0) : 0),
+                handleSide: (!isHingeProfile && data.hasHandle) ? data.handleSide : null,
+                hingeSide: (canHaveHinges && data.hasHinge) ? data.hingeSide : null,
+                wireSide:  isLightingProfile ? data.handleSide : null,
+                handleOffset: isHingeProfile ? 0 : (data.hasHandle ? HANDLE_WIDTH_MM : 0),
                 handlePosition: isHingeProfile ? 0 : (data.hasHandle ? Number(data.handlePosition || 0) : 0),
                 colorId: data.colorId ? Number(data.colorId) : undefined,
-                handleColorId: (!isHingeProfile && data.hasHandle && data.handleColorId)
-                    ? Number(data.handleColorId)
-                    : undefined,
             };
 
             if (isEditMode && construction) {
+                const { quantity: _quantity, ...updateData } = submitData;
+
                 await updateConstruction({
                     id: construction.id,
-                    ...submitData
+                    ...updateData
                 });
                 reset();
                 props.onClose();
@@ -214,7 +230,7 @@ const ConstructionCreateModal: FC<IConstructionCreateModal> = ({ construction, o
                 reset();
                 props.onClose();
 
-                if (response?.data?.data?.id) {
+                if (submitData.quantity === 1 && response?.data?.data?.id) {
                     const constructionId = response.data.data.id;
                     const editorUrl = `/construction-editor?id=${constructionId}&orderId=${submitData.orderId}`;
                     navigate(editorUrl);
@@ -229,17 +245,49 @@ const ConstructionCreateModal: FC<IConstructionCreateModal> = ({ construction, o
     const heightValue = watch('height');
     const handleSideValue = watch('handleSide');
     const profileSystemIdValue = watch('profileSystemId');
-    const constructionStatusIdValue = watch('constructionStatusId');
     const glassFillIdValue = watch('glassFillId');
+    const constructionStatusIdValue = watch('constructionStatusId');
     const hasHandleValue = watch('hasHandle') ?? false;
+    const hasHingeValue = watch('hasHinge') ?? false;
     const orderIdValue = watch('orderId');
     const colorIdValue = watch('colorId');
-    const handleColorIdValue = watch('handleColorId');
 
     const isFirstRender = useRef(true);
 
+    const selectedOrderId = Number(orderIdValue) || 0;
+    const { data: orderConstructions } = useConstructionByOrder(selectedOrderId);
+
+    const lockedProfileSystem = (() => {
+        const others = (orderConstructions ?? []).filter(item => item.id !== construction?.id);
+        if (!others.length) return null;
+
+        const [first] = others;
+        const single = others.every(item => item.profileSystemId === first.profileSystemId);
+        if (!single) return null;
+
+        if (construction && construction.profileSystemId !== first.profileSystemId) return null;
+
+        return first.profileSystem;
+    })();
+
+    useEffect(() => {
+        if (!lockedProfileSystem) return;
+        if (Number(profileSystemIdValue) === lockedProfileSystem.id) return;
+
+        setValue('profileSystemId', lockedProfileSystem.id);
+        clearErrors('profileSystemId');
+    }, [lockedProfileSystem, profileSystemIdValue, setValue, clearErrors]);
+
     const selectedProfileSystem = dataProfileSystem?.find(s => s.id === Number(profileSystemIdValue));
     const isHingeProfile = (selectedProfileSystem?.defaultParameters)?.hasHandleFeature === false;
+
+    const isLightingProfile = (selectedProfileSystem?.defaultParameters)?.hasLighting === true;
+    const sideLabel = isLightingProfile ? 'Сторона виходу дроту' : 'Сторона завісів';
+
+    const canHaveHinges =
+        (selectedProfileSystem?.defaultParameters)?.hasHingeFeature === true && !isLightingProfile;
+
+    const hingeSideValue = watch('hingeSide');
 
     useEffect(() => {
         if (props.open) {
@@ -250,7 +298,17 @@ const ConstructionCreateModal: FC<IConstructionCreateModal> = ({ construction, o
     useEffect(() => {
         if (!profileSystemIdValue) return;
         setValue('handleSide', HandleSideEnum.LEFT);
+        setValue('hingeSide', HandleSideEnum.RIGHT);
     }, [profileSystemIdValue]);
+
+    useEffect(() => {
+        if (isHingeProfile || !handleSideValue) return;
+
+        setValue(
+            'hingeSide',
+            handleSideValue === HandleSideEnum.LEFT ? HandleSideEnum.RIGHT : HandleSideEnum.LEFT,
+        );
+    }, [handleSideValue, isHingeProfile, setValue]);
 
     useEffect(() => {
         if (!hasHandleValue || !handleSideValue) return;
@@ -272,18 +330,18 @@ const ConstructionCreateModal: FC<IConstructionCreateModal> = ({ construction, o
         <Modal
             {...props}
             className={cn(
-                'flex flex-col gap-2.5 max-w-[600px] min-h-10 rounded-base-mini mx-2 overflow-y-auto max-h-dvh h-auto',
+                'max-w-[600px]',
             )}
         >
             <Modal.Title className={'gap-2'} onClose={props.onClose}>
                 {isEditMode ? 'Редагувати конструкцію' : 'Додати конструкцію'}
             </Modal.Title>
 
-            <Modal.Body className={'flex flex-col gap-4 rounded-xl p-3'}>
+            <Modal.Body className={'flex flex-col gap-4'}>
                 <form onSubmit={handleSubmit(onSubmit, onInvalid)} className={'flex flex-col gap-4'}>
                     {!orderId && (
                         <div className={'relative flex flex-col gap-[5px] h-fit'}>
-                            <p className="text-xs font-semibold pl-4">Замовлення *</p>
+                            <p className="text-xs font-semibold pl-4">Замовлення</p>
                             {!isPendingOrder ? (
                                 <>
                                     <SelectorSearch
@@ -313,8 +371,17 @@ const ConstructionCreateModal: FC<IConstructionCreateModal> = ({ construction, o
                     )}
 
                     <div className={'relative flex flex-col gap-[5px] h-fit'}>
-                        <p className="text-xs font-semibold pl-4">Профільна система *</p>
-                        {!isPendingProfileSystem ? (
+                        <p className="text-xs font-semibold pl-4">Профільна система</p>
+                        {lockedProfileSystem ? (
+                            <>
+                                <div className="flex h-[42px] items-center rounded-[10px] border border-input px-4 text-sm text-foreground/80">
+                                    {lockedProfileSystem.title}
+                                </div>
+                                <p className="pl-4 text-xs text-muted-foreground">
+                                    Одна система на замовлення
+                                </p>
+                            </>
+                        ) : !isPendingProfileSystem ? (
                             <>
                                 <SelectorSearch
                                     getAndSet={[
@@ -342,7 +409,7 @@ const ConstructionCreateModal: FC<IConstructionCreateModal> = ({ construction, o
                     </div>
 
                     <div className={'relative flex flex-col gap-[5px] h-fit'}>
-                        <p className="text-xs font-semibold pl-4">Колір профілю *</p>
+                        <p className="text-xs font-semibold pl-4">Колір профілю</p>
                         {!isPendingProfileColors ? (
                             <>
                                 <SelectorSearch
@@ -374,29 +441,10 @@ const ConstructionCreateModal: FC<IConstructionCreateModal> = ({ construction, o
                         <div className={'relative flex flex-col gap-[5px] h-fit flex-1'}>
                             <Input
                                 control={control}
-                                name={'width'}
-                                type={'number'}
-                                label="Ширина (мм) *"
-                                placeholder={'0'}
-                                rules={{
-                                    required: 'Ширина обов\'язкова',
-                                    min: { value: 100, message: 'Мінімум 100 мм' },
-                                    max: { value: 3000, message: 'Максимум 3000 мм' },
-                                    validate: validateDecimalPlaces
-                                }}
-                                classNameContainer="mb-0"
-                            />
-                            {errors.width && (
-                                <p className={'text-red-500 text-xs mt-1'}>{errors.width.message}</p>
-                            )}
-                        </div>
-
-                        <div className={'relative flex flex-col gap-[5px] h-fit flex-1'}>
-                            <Input
-                                control={control}
                                 name={'height'}
                                 type={'number'}
-                                label="Висота (мм) *"
+                                label="Висота *" unit="мм"
+                                hint={CONSTRUCTION_HINTS.frameHeight}
                                 placeholder={'0'}
                                 rules={{
                                     required: 'Висота обов\'язкова',
@@ -408,6 +456,27 @@ const ConstructionCreateModal: FC<IConstructionCreateModal> = ({ construction, o
                             />
                             {errors.height && (
                                 <p className={'text-red-500 text-xs mt-1'}>{errors.height.message}</p>
+                            )}
+                        </div>
+
+                        <div className={'relative flex flex-col gap-[5px] h-fit flex-1'}>
+                            <Input
+                                control={control}
+                                name={'width'}
+                                type={'number'}
+                                label="Ширина *" unit="мм"
+                                hint={CONSTRUCTION_HINTS.frameWidth}
+                                placeholder={'0'}
+                                rules={{
+                                    required: 'Ширина обов\'язкова',
+                                    min: { value: 100, message: 'Мінімум 100 мм' },
+                                    max: { value: 3000, message: 'Максимум 3000 мм' },
+                                    validate: validateDecimalPlaces
+                                }}
+                                classNameContainer="mb-0"
+                            />
+                            {errors.width && (
+                                <p className={'text-red-500 text-xs mt-1'}>{errors.width.message}</p>
                             )}
                         </div>
                     </div>
@@ -455,51 +524,60 @@ const ConstructionCreateModal: FC<IConstructionCreateModal> = ({ construction, o
                     {/*    </div>*/}
                     {/*</div>*/}
 
-                    <div className={'flex flex-row items-center gap-4'}>
-                        <div className={'relative flex flex-col gap-[5px] h-fit flex-1'}>
-                            <p className="text-xs font-semibold pl-4">Скло *</p>
-                            {!isPendingGlassFill ? (
-                                <>
-                                    <SelectorSearch
-                                        getAndSet={[
-                                            glassFillIdValue?.toString() || '',
-                                            (value) => {
-                                                setValue('glassFillId', value ? parseInt(value as string) : undefined);
-                                                clearErrors('glassFillId');
-                                            }
-                                        ]}
-                                        options={formattedGlassFillOptions}
-                                        placeholder={'Оберіть скло'}
-                                        optionValue="value"
-                                        optionLabel="label"
-                                        isEmptyValueDisable={true}
-                                        searchable={true}
-                                        hasError={!!errors.glassFillId}
-                                    />
-                                    {errors.glassFillId && (
-                                        <p className={'text-red-500 text-xs mt-1'}>{errors.glassFillId.message as string}</p>
-                                    )}
-                                </>
-                            ) : (
-                                <p className="text-gray-400 text-sm">Завантаження скла...</p>
-                            )}
-                        </div>
-
-                        <ToggleBtn
-                            className="flex flex-1 mt-5 max-w-[260px]"
-                            useStateProps={[
-                                watch('hasGlassEdge') ?? false,
-                                () => setValue('hasGlassEdge', !watch('hasGlassEdge'))
-                            ]}
-                        >
-                            Шліфування торців скла
-                        </ToggleBtn>
+                    <div className={'relative flex flex-col gap-[5px] h-fit'}>
+                        <p className="text-xs font-semibold pl-4">Скло</p>
+                        {!isPendingGlassFill ? (
+                            <>
+                                <SelectorSearch
+                                    getAndSet={[
+                                        glassFillIdValue?.toString() || '',
+                                        (value) => {
+                                            setValue('glassFillId', value ? parseInt(value as string) : undefined);
+                                            clearErrors('glassFillId');
+                                        }
+                                    ]}
+                                    options={formattedGlassFillOptions}
+                                    placeholder={'Оберіть скло'}
+                                    optionValue="value"
+                                    optionLabel="label"
+                                    isEmptyValueDisable={true}
+                                    searchable={true}
+                                    hasError={!!errors.glassFillId}
+                                />
+                                {errors.glassFillId && (
+                                    <p className={'text-red-500 text-xs mt-1'}>{errors.glassFillId.message as string}</p>
+                                )}
+                            </>
+                        ) : (
+                            <p className="text-gray-400 text-sm">Завантаження скла...</p>
+                        )}
                     </div>
 
-                    <div className={'relative flex flex-col gap-[5px] h-fit'}>
-                        <p className="text-xs font-semibold pl-4">Статус конструкції</p>
-                        {!isPendingConstructionStatus ? (
-                            <>
+                    {!isDealer && !isEditMode && (
+                        <div className={'relative flex flex-col gap-[5px] h-fit'}>
+                            <Input
+                                control={control}
+                                name={'quantity'}
+                                type={'number'}
+                                label="Кількість"
+                                hint="Скільки однакових конструкцій створити одразу. Номери їм присвоюються послідовно, решта параметрів однакова."
+                                placeholder={'1'}
+                                rules={{
+                                    min: { value: 1, message: 'Мінімум 1' },
+                                    max: { value: 50, message: 'Максимум 50' },
+                                }}
+                                classNameContainer="mb-0"
+                            />
+                            {errors.quantity && (
+                                <p className={'text-red-500 text-xs mt-1'}>{errors.quantity.message}</p>
+                            )}
+                        </div>
+                    )}
+
+                    {!isDealer && (
+                        <div className={'relative flex flex-col gap-[5px] h-fit'}>
+                            <p className="text-xs font-semibold pl-4">Статус конструкції</p>
+                            {!isPendingConstructionStatus ? (
                                 <SelectorSearch
                                     getAndSet={[
                                         constructionStatusIdValue ? constructionStatusIdValue.toString() : '',
@@ -516,16 +594,47 @@ const ConstructionCreateModal: FC<IConstructionCreateModal> = ({ construction, o
                                     searchable={true}
                                     hasError={!!errors.constructionStatusId}
                                 />
-                            </>
-                        ) : (
-                            <p className="text-gray-400 text-sm">Завантаження статусів...</p>
-                        )}
-                    </div>
+                            ) : (
+                                <p className="text-muted-foreground text-sm">Завантаження статусів...</p>
+                            )}
+                        </div>
+                    )}
 
-                    <div className={'relative flex flex-col gap-[5px] h-fit border-t pt-4'}>
+                    <div className={'relative flex flex-col gap-3 h-fit border-t border-border pt-4'}>
+                        {canHaveHinges && (
+                            <>
+                                <ToggleBtn
+                                    useStateProps={[
+                                        hasHingeValue,
+                                        () => setValue('hasHinge', !hasHingeValue)
+                                    ]}
+                                    description="Без завіс комплект не додається у вартість"
+                                >
+                                    Завіси
+                                </ToggleBtn>
+
+                                {hasHingeValue && isHingeProfile && (
+                                    <div className={'mt-4'}>
+                                        <p className="text-xs font-semibold pl-4 mb-2">Сторона завісів</p>
+                                        <SelectorSearch
+                                            getAndSet={[
+                                                hingeSideValue || '',
+                                                (value) => setValue('hingeSide', value as HandleSideEnum)
+                                            ]}
+                                            options={handleSideOptions}
+                                            placeholder={'Оберіть сторону завісів'}
+                                            optionValue="value"
+                                            optionLabel="label"
+                                            isEmptyValueDisable={true}
+                                            searchable={true}
+                                        />
+                                    </div>
+                                )}
+                            </>
+                        )}
+
                         {!isHingeProfile && (
                             <ToggleBtn
-                                className="flex-1 w-full"
                                 useStateProps={[
                                     hasHandleValue,
                                     () => setValue('hasHandle', !hasHandleValue)
@@ -535,29 +644,28 @@ const ConstructionCreateModal: FC<IConstructionCreateModal> = ({ construction, o
                             </ToggleBtn>
                         )}
 
-                        {isHingeProfile ? (
-                            <div className={'mt-2'}>
-                                <p className="text-xs font-semibold pl-4 mb-2">Сторона завісів *</p>
+                        {isLightingProfile && (
+                            <div>
+                                <p className="text-xs font-semibold pl-4 mb-2">{sideLabel}</p>
                                 <SelectorSearch
                                     getAndSet={[
                                         handleSideValue || '',
                                         (value) => setValue('handleSide', value as HandleSideEnum)
                                     ]}
                                     options={handleSideOptions}
-                                    placeholder={'Оберіть сторону завісів'}
+                                    placeholder={`Оберіть ${sideLabel.toLowerCase()}`}
                                     optionValue="value"
                                     optionLabel="label"
                                     isEmptyValueDisable={true}
                                     searchable={true}
                                 />
-                                {errors.handleSide && (
-                                    <p className={'text-red-500 text-sm mt-1'}>Сторона завісів обов'язкова</p>
-                                )}
                             </div>
-                        ) : hasHandleValue && (
+                        )}
+
+                        {!isHingeProfile && hasHandleValue && (
                             <>
                                 <div className={'mt-4'}>
-                                    <p className="text-xs font-semibold pl-4 mb-2">Сторона ручки *</p>
+                                    <p className="text-xs font-semibold pl-4 mb-2">Сторона ручки</p>
                                     <SelectorSearch
                                         getAndSet={[
                                             handleSideValue || '',
@@ -575,53 +683,13 @@ const ConstructionCreateModal: FC<IConstructionCreateModal> = ({ construction, o
                                     )}
                                 </div>
 
-                                <div className={'mt-4'}>
-                                    <p className="text-xs font-semibold pl-4 mb-2">Колір ручки *</p>
-                                    {!isPendingHandleColors ? (
-                                        <SelectorSearch
-                                            getAndSet={[
-                                                handleColorIdValue?.toString() || '',
-                                                (value) => setValue('handleColorId', value ? parseInt(value as string) : undefined)
-                                            ]}
-                                            options={formattedHandleColorOptions}
-                                            placeholder={'Оберіть колір ручки'}
-                                            optionValue="value"
-                                            optionLabel="label"
-                                            isEmptyValueDisable={false}
-                                            searchable={true}
-                                        />
-                                    ) : (
-                                        <p className="text-gray-400 text-sm">Завантаження кольорів...</p>
-                                    )}
-                                </div>
-
                                 <div className={'flex flex-row gap-4 mt-4'}>
-                                    <div className={'flex-1'}>
-                                        <Input
-                                            control={control}
-                                            name={'handleOffset'}
-                                            type={'number'}
-                                            label="Ширина ручки (мм) *"
-                                            placeholder={'0'}
-                                            rules={{
-                                                required: 'Ширина ручки обов\'язкова',
-                                                min: { value: 0, message: 'Мінімум 0 мм' },
-                                                max: { value: 1000, message: 'Максимум 1000 мм' },
-                                                validate: validateDecimalPlaces
-                                            }}
-                                            classNameContainer="mb-0 w-full"
-                                        />
-                                        {errors.handleOffset && (
-                                            <p className={'text-red-500 text-xs mt-1'}>{errors.handleOffset.message}</p>
-                                        )}
-                                    </div>
-
                                     <div className={'flex-1'}>
                                         <Input
                                             control={control}
                                             name={'handlePosition'}
                                             type={'number'}
-                                            label="Позиція ручки (мм) *"
+                                            label="Позиція ручки *" unit="мм"
                                             placeholder={'0'}
                                             rules={{
                                                 required: 'Позиція ручки обов\'язкова',
@@ -653,7 +721,7 @@ const ConstructionCreateModal: FC<IConstructionCreateModal> = ({ construction, o
                         <Button
                             type="button"
                             onClick={props.onClose}
-                            color="red"
+                            color="blackNoneLine"
                             className="flex-1"
                             disabled={isPending}
                         >
@@ -663,7 +731,7 @@ const ConstructionCreateModal: FC<IConstructionCreateModal> = ({ construction, o
                             type="submit"
                             color="greenDarkgreen"
                             className="flex-1"
-                            disabled={isPending}
+                            disabled={isPending || !isValid}
                         >
                             {isEditMode ? 'Оновити конструкцію' : 'Додати конструкцію'}
                         </Button>

@@ -1,9 +1,10 @@
 import React, { FC, useState, useEffect, useCallback } from "react";
 import Modal from "@/ui/Modal/Modal";
-import Button from "@/ui/button/Button";
+import { Checkbox } from "@/ui/shadcn/checkbox";
+import { Button } from "@/ui/shadcn/button";
 import { ModalProps } from "@/hooks/useModal/useModal";
 import { IConstruction } from "@/screens/construction/type/construction/IConstruction";
-import { Download, ChevronDown, ChevronRight, CheckSquare, Square, Minus } from "lucide-react";
+import { ChevronDown, ChevronRight, Download } from "lucide-react";
 import { cn } from "@/helpers/cn";
 import { saveAs } from "file-saver";
 import JSZip from "jszip";
@@ -37,21 +38,6 @@ type SelectionMap = Record<string, boolean>;
 function makeKey(detailId: number, operationId: number) {
     return `${detailId}-${operationId}`;
 }
-
-const CheckIcon: FC<{ state: "all" | "none" | "partial"; onClick: () => void; className?: string }> = ({ state, onClick, className }) => (
-    <button
-        type="button"
-        onClick={(e) => {
-            e.stopPropagation();
-            onClick();
-        }}
-        className={cn("flex items-center justify-center w-5 h-5 rounded transition-colors shrink-0", className)}
-    >
-        {state === "all"     && <CheckSquare size={18} className="text-[#0094D5]" />}
-        {state === "partial" && <Minus       size={18} className="text-[#0094D5]" />}
-        {state === "none"    && <Square      size={18} className="text-gray-500"  />}
-    </button>
-);
 
 type GCodeSelectionModalProps = ModalProps & {
     constructions: IConstruction[] | null | undefined;
@@ -211,9 +197,19 @@ const GCodeSelectionModal: FC<GCodeSelectionModalProps> = ({
 
     const deselectAll = () => setSelection({});
 
-    const expandAll = () => {
+    /** Усе розгорнуто — кнопка має пропонувати згорнути, а не розгорнути ще раз. */
+    const allExpanded = nodes.length > 0 && nodes.every((n) => n.expanded);
+
+    const toggleExpandAll = () => {
+        if (allExpanded) {
+            setNodes((prev) => prev.map((n) => ({ ...n, expanded: false })));
+            return;
+        }
+
         setNodes((prev) =>
             prev.map((n) => {
+                // Догружаємо лише те, що ще не тягнули: розгортання відкриває
+                // деталі, а їхній G-code приходить окремим запитом на кожну
                 if (!n.expanded) {
                     n.details.forEach((d) => {
                         if (d.gcodeItems.length === 0 && !d.loading) {
@@ -274,50 +270,54 @@ const GCodeSelectionModal: FC<GCodeSelectionModalProps> = ({
 
             <Modal.Body className="flex flex-col gap-0 p-0 overflow-hidden flex-1 min-h-0">
 
-                {/* Toolbar */}
-                <div className="flex items-center justify-between px-4 py-2.5 rounded-tl-xl rounded-tr-xl border-b border-react/500 bg-react/600 shrink-0">
+                {/*
+                  * Панель дій.
+                  *
+                  * «Розгорнути всі», «Вибрати все», «Зняти все» були синіми
+                  * підкресленими написами з роздільниками «|» — на кнопки вони
+                  * не схожі, а саме кнопками тут і користуються.
+                  */}
+                <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
                     <div className="flex items-center gap-2">
-                        <CheckIcon
+                        <Checkbox
                             state={globalState}
-                            onClick={() => globalState === "all" ? deselectAll() : selectAll()}
+                            aria-label="Вибрати все"
+                            onChange={() => (globalState === "all" ? deselectAll() : selectAll())}
                         />
-                        <span className="text-sm text-gray-400">
-                            Вибрано:{" "}
-                            <span className="font-semibold text-gray-200">{selectedCount}</span> файлів
+                        <span className="text-sm text-muted-foreground">
+                            Вибрано <span className="font-medium tabular-nums text-foreground">{selectedCount}</span> файлів
                         </span>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                        <button
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Button
                             type="button"
-                            onClick={expandAll}
-                            className="text-xs text-[#0094D5] hover:underline"
+                            size="sm"
+                            variant="outline"
+                            onClick={toggleExpandAll}
+                            disabled={nodes.length === 0}
                         >
-                            Розгорнути всі
-                        </button>
-                        <span className="text-react/300">|</span>
-                        <button
-                            type="button"
-                            onClick={selectAll}
-                            className="text-xs text-[#0094D5] hover:underline"
-                        >
+                            {allExpanded ? 'Згорнути всі' : 'Розгорнути всі'}
+                        </Button>
+                        <Button type="button" size="sm" variant="outline" onClick={selectAll}>
                             Вибрати все
-                        </button>
-                        <span className="text-react/300">|</span>
-                        <button
+                        </Button>
+                        <Button
                             type="button"
+                            size="sm"
+                            variant="ghost"
                             onClick={deselectAll}
-                            className="text-xs text-gray-500 hover:underline"
+                            disabled={selectedCount === 0}
                         >
                             Зняти все
-                        </button>
+                        </Button>
                     </div>
                 </div>
 
                 {/* Tree */}
-                <div className="flex-1 overflow-y-auto rounded-b-xl divide-y divide-react/500">
+                <div className="flex-1 overflow-y-auto rounded-b-xl divide-y divide-border">
                     {nodes.length === 0 && (
-                        <p className="text-center text-gray-500 py-12 text-sm">Конструкцій немає</p>
+                        <p className="text-center text-muted-foreground py-12 text-sm">Конструкцій немає</p>
                     )}
 
                     {nodes.map((node) => {
@@ -330,24 +330,24 @@ const GCodeSelectionModal: FC<GCodeSelectionModalProps> = ({
 
                                 {/* Construction row */}
                                 <div
-                                    className="flex items-center gap-2 px-4 py-3 hover:bg-react/500 cursor-pointer select-none transition-colors"
+                                    className="flex items-center gap-2 px-4 py-3 hover:bg-accent/60 cursor-pointer select-none transition-colors"
                                     onClick={() => toggleConstruction(node.construction.id)}
                                 >
-                                    <CheckIcon
+                                    <Checkbox
                                         state={cState}
-                                        onClick={() => toggleConstruction_selection(node)}
+                                        onChange={() => toggleConstruction_selection(node)}
                                     />
 
                                     {node.expanded
-                                        ? <ChevronDown  size={16} className="text-gray-500 shrink-0" />
-                                        : <ChevronRight size={16} className="text-gray-500 shrink-0" />
+                                        ? <ChevronDown  size={16} className="text-muted-foreground shrink-0" />
+                                        : <ChevronRight size={16} className="text-muted-foreground shrink-0" />
                                     }
 
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-semibold text-gray-200">
+                                        <p className="text-sm font-semibold text-foreground">
                                             Конструкція {node.construction.constructionNo}
                                         </p>
-                                        <p className="text-xs text-gray-500">
+                                        <p className="text-xs text-muted-foreground">
                                             {node.construction.profileSystem?.title} •{" "}
                                             {node.construction.width} × {node.construction.height} мм •{" "}
                                             {totalDetails} деталей
@@ -355,7 +355,7 @@ const GCodeSelectionModal: FC<GCodeSelectionModalProps> = ({
                                     </div>
 
                                     {node.expanded && (
-                                        <span className="text-xs text-gray-500 shrink-0">
+                                        <span className="text-xs text-muted-foreground shrink-0">
                                             {loadedDetails}/{totalDetails} завантажено
                                         </span>
                                     )}
@@ -363,9 +363,9 @@ const GCodeSelectionModal: FC<GCodeSelectionModalProps> = ({
 
                                 {/* Details */}
                                 {node.expanded && (
-                                    <div className="bg-react/600">
+                                    <div className="bg-transparent">
                                         {node.details.length === 0 && (
-                                            <p className="text-xs text-gray-500 px-12 py-3">
+                                            <p className="text-xs text-muted-foreground px-12 py-3">
                                                 Деталей немає
                                             </p>
                                         )}
@@ -374,32 +374,32 @@ const GCodeSelectionModal: FC<GCodeSelectionModalProps> = ({
                                             const dState = getDetailState(detail);
 
                                             return (
-                                                <div key={detail.detailId} className="border-t border-react/500">
+                                                <div key={detail.detailId} className="border-t border-border">
 
                                                     {/* Detail row */}
-                                                    <div className="flex items-center gap-2 pl-10 pr-4 py-2 hover:bg-react/500 transition-colors">
-                                                        <CheckIcon
+                                                    <div className="flex items-center gap-2 pl-10 pr-4 py-2 hover:bg-accent/60 transition-colors">
+                                                        <Checkbox
                                                             state={dState}
-                                                            onClick={() => toggleDetail_selection(detail)}
+                                                            onChange={() => toggleDetail_selection(detail)}
                                                         />
                                                         <div className="flex-1 min-w-0">
-                                                            <p className="text-xs text-gray-500">
+                                                            <p className="text-xs text-muted-foreground">
                                                                 {detail.sequence ? `R${detail.sequence}` : detail.name}
                                                             </p>
                                                         </div>
 
                                                         {detail.loading && (
-                                                            <span className="text-xs text-gray-500 animate-pulse">
+                                                            <span className="text-xs text-muted-foreground animate-pulse">
                                                                 Завантаження…
                                                             </span>
                                                         )}
                                                         {detail.error && (
-                                                            <span className="text-xs text-red-400">
+                                                            <span className="text-xs text-destructive-foreground">
                                                                 Помилка
                                                             </span>
                                                         )}
                                                         {!detail.loading && !detail.error && detail.gcodeItems.length === 0 && (
-                                                            <span className="text-xs text-gray-500">
+                                                            <span className="text-xs text-muted-foreground">
                                                                 G-code відсутній
                                                             </span>
                                                         )}
@@ -411,35 +411,34 @@ const GCodeSelectionModal: FC<GCodeSelectionModalProps> = ({
                                                         const checked = !!selection[k];
 
                                                         return (
-                                                            <label
+                                                            <div
                                                                 key={k}
                                                                 className={cn(
                                                                     "flex items-center gap-3 pl-16 pr-4 py-1.5 cursor-pointer transition-colors",
                                                                     checked
-                                                                        ? "bg-[#064A76]/20"
-                                                                        : "hover:bg-react/500",
+                                                                        ? "bg-primary/10"
+                                                                        : "hover:bg-accent/60",
                                                                 )}
                                                             >
-                                                                <input
-                                                                    type="checkbox"
-                                                                    className="w-3.5 h-3.5 rounded accent-[#0094D5] shrink-0"
-                                                                    checked={checked}
+                                                                <Checkbox
+                                                                    state={checked ? 'all' : 'none'}
+                                                                    aria-label={item.fileName}
                                                                     onChange={() => toggleItem(detail.detailId, item.operationId)}
                                                                 />
                                                                 <div className="flex-1 min-w-0">
-                                                                    <p className="text-xs font-mono text-gray-300 truncate">
+                                                                    <p className="text-xs font-mono text-muted-foreground/60 truncate">
                                                                         {item.fileName}
                                                                     </p>
                                                                     {item.operationTitle && (
-                                                                        <p className="text-xs text-gray-500 truncate">
+                                                                        <p className="text-xs text-muted-foreground truncate">
                                                                             {item.operationTitle}
                                                                         </p>
                                                                     )}
                                                                 </div>
-                                                                <span className="text-xs text-gray-500 shrink-0 font-mono">
+                                                                <span className="text-xs text-muted-foreground shrink-0 font-mono">
                                                                     {item.operationType}
                                                                 </span>
-                                                            </label>
+                                                            </div>
                                                         );
                                                     })}
                                                 </div>
@@ -453,28 +452,20 @@ const GCodeSelectionModal: FC<GCodeSelectionModalProps> = ({
                 </div>
 
                 {/* Footer */}
-                <div className="flex items-center justify-between gap-3 px-4 py-3 shrink-0">
-                    <Button
-                        type="button"
-                        color="gray"
-                        className="w-auto flex-1 px-4"
-                        onClick={modalProps.onClose}
-                    >
+                <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-4 py-3">
+                    <Button type="button" variant="secondary" onClick={modalProps.onClose}>
                         Скасувати
                     </Button>
 
                     <Button
                         type="button"
-                        color="blue"
-                        className="w-auto px-4 flex-1 flex justify-center items-center gap-2"
                         disabled={selectedCount === 0 || isDownloading}
                         onClick={handleDownload}
                     >
                         <Download size={15} />
                         {isDownloading
                             ? "Завантаження…"
-                            : `Завантажити ${selectedCount > 0 ? `(${selectedCount})` : ""}`
-                        }
+                            : `Завантажити${selectedCount > 0 ? ` (${selectedCount})` : ""}`}
                     </Button>
                 </div>
 

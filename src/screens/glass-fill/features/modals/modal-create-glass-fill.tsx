@@ -20,9 +20,11 @@ type IGlassFillCreateModal = ModalProps & {
 const GlassFillCreateModal: FC<IGlassFillCreateModal> = ({ glassFill, ...props }) => {
     const isEditMode = !!glassFill;
 
-    const { control, handleSubmit, reset, formState: { errors }, setValue } = useForm<IGlassFillForm>({
+    const { control, handleSubmit, trigger, reset, formState: { errors, isValid }, setValue } = useForm<IGlassFillForm>({
+        mode: 'onChange',
         defaultValues: {
             type: '',
+            code1C: '',
             thickness: ''
         }
     });
@@ -35,6 +37,7 @@ const GlassFillCreateModal: FC<IGlassFillCreateModal> = ({ glassFill, ...props }
     useEffect(() => {
         if (glassFill && props.open) {
             setValue('type', glassFill.type || '');
+            setValue('code1C', glassFill.code1C || '');
             setValue('thickness', glassFill.thickness || '');
         } else if (!glassFill && props.open) {
             reset();
@@ -47,18 +50,32 @@ const GlassFillCreateModal: FC<IGlassFillCreateModal> = ({ glassFill, ...props }
         }
     }, [props.open, reset]);
 
+    /**
+     * Кнопка збереження вимкнена, поки форма невалідна.
+     *
+     * У режимі редагування значення підставляються через `setValue`, а він не
+     * перераховує `isValid` — без явного `trigger` кнопка лишалась би сірою на
+     * вже заповненій формі. У режимі створення `trigger` не викликаємо: він би
+     * одразу підсвітив червоним усі порожні обов'язкові поля.
+     */
+    useEffect(() => {
+        if (props.open && isEditMode) void trigger();
+    }, [props.open, isEditMode, trigger]);
+
     const onSubmit = async (data: IGlassFillForm) => {
         try {
             if (isEditMode && glassFill) {
                 const updateData = {
                     id: glassFill.id,
                     type: data.type,
+                    code1C: data.code1C,
                     thickness: data.thickness,
                 };
                 await updateGlassFill(updateData);
             } else {
                 const createData = {
                     type: data.type,
+                    code1C: data.code1C,
                     thickness: data.thickness,
                 };
                 await createGlassFill(createData);
@@ -75,17 +92,17 @@ const GlassFillCreateModal: FC<IGlassFillCreateModal> = ({ glassFill, ...props }
         <Modal
             {...props}
             className={cn(
-                'flex flex-col gap-2.5 max-w-[500px] min-h-10 rounded-base-mini mx-2 overflow-y-auto max-h-dvh h-auto',
+                'max-w-[500px]',
             )}
         >
             <Modal.Title className={'gap-2'} onClose={props.onClose}>
                 {isEditMode ? 'Редагувати заповнення' : 'Створити заповнення'}
             </Modal.Title>
 
-            <Modal.Body className={'flex flex-col gap-4 rounded-xl p-3'}>
+            <Modal.Body className={'flex flex-col gap-4'}>
                 <form onSubmit={handleSubmit(onSubmit)} className={'flex flex-col gap-4'}>
                     <div className={'relative flex flex-col gap-[5px] h-fit'}>
-                        <p className="text-xs font-semibold pl-4">Тип *</p>
+                        <p className="text-xs font-semibold pl-4">Тип</p>
                         <Input
                             control={control}
                             name={'type'}
@@ -96,8 +113,18 @@ const GlassFillCreateModal: FC<IGlassFillCreateModal> = ({ glassFill, ...props }
                             }}
                         />
                         {errors.type && (
-                            <p className={'text-red-500 text-sm'}>{errors.type.message}</p>
+                            <p className={'text-destructive-foreground text-sm'}>{errors.type.message}</p>
                         )}
+                    </div>
+
+                    <div className={'relative flex flex-col gap-[5px] h-fit'}>
+                        <p className="text-xs font-semibold pl-4">Код 1С</p>
+                        <Input
+                            control={control}
+                            name={'code1C'}
+                            placeholder={'Напр. 000045212'}
+                            classNameContainer={'w-full'}
+                        />
                     </div>
 
                     <div className={'relative flex flex-col gap-[5px] h-fit'}>
@@ -108,6 +135,7 @@ const GlassFillCreateModal: FC<IGlassFillCreateModal> = ({ glassFill, ...props }
                             placeholder={'Введіть товщину (необов\'язково)'}
                             classNameContainer={'w-full'}
                             type={'number'}
+                            unit="мм"
                         />
                     </div>
 
@@ -115,7 +143,7 @@ const GlassFillCreateModal: FC<IGlassFillCreateModal> = ({ glassFill, ...props }
                         <Button
                             type="button"
                             onClick={props.onClose}
-                            color="red"
+                            color="blackNoneLine"
                             className="flex-1"
                             disabled={isPending}
                         >
@@ -125,7 +153,7 @@ const GlassFillCreateModal: FC<IGlassFillCreateModal> = ({ glassFill, ...props }
                             type="submit"
                             color="greenDarkgreen"
                             className="flex-1"
-                            disabled={isPending}
+                            disabled={isPending || !isValid}
                         >
                             {isEditMode ? 'Оновити заповнення' : 'Створити заповнення'}
                         </Button>

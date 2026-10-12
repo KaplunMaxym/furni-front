@@ -1,6 +1,8 @@
 'use client'
 
-import React, {useState, useCallback, useEffect} from 'react';
+import React, {useState, useCallback, useEffect, useMemo} from 'react';
+import { useConstructionDetails } from '@/screens/construction/hooks/construction-details/useConstructionDetails';
+import { resolveDetailCode, isHorizontalCode, CODE_PRIORITY } from '@/screens/construction/constants/beamConstants';
 import { ArrowLeft } from 'lucide-react';
 import Canvas3DAdvanced from './canvas/Canvas3DAdvanced';
 import ParametersPanel, {
@@ -10,7 +12,8 @@ import ParametersPanel, {
 } from './panels/ParametersPanel';
 import PartsList from './panels/PartsList';
 import GcodeModal from './modals/GcodeModal';
-import Button from "@/ui/button/Button";
+import { Button } from "@/ui/shadcn/button";
+import PageHeader, { HeaderBadge } from "@/ui/page-header/PageHeader";
 import useModal from "@/hooks/useModal";
 import {
     ConstructionEditorProps,
@@ -25,15 +28,27 @@ import {FocusedHoleKey} from "@/screens/construction/type/editor/FocusedHole";
 
 interface ConstructionEditorPropsExtended extends ConstructionEditorProps {
     onRefetch?: () => Promise<IConstruction | null>;
+    /**
+     * Режим перегляду: сама модель і більше нічого.
+     *
+     * Для дилера. Він дивиться на виріб, щоб побачити, що замовив, — а не щоб
+     * правити параметри верстата. Тому зникають обидві панелі, розмірні лінії
+     * і позначки отворів, а камера стає з тилу: спереду фасад — це рівна
+     * площина, по якій нічого не зрозуміло.
+     *
+     * Це зручність, а не захист: G-code і склад деталей закриті на сервері.
+     */
+    readOnly?: boolean;
 }
 
-export default function ConstructionEditor({construction, order, onGoBack, onRefetch}: ConstructionEditorPropsExtended): React.ReactElement {
+export default function ConstructionEditor({construction, order, onGoBack, onRefetch, readOnly = false}: ConstructionEditorPropsExtended): React.ReactElement {
     const [frameWidth, setFrameWidth] = useState<number>(construction.width || 523);
     const [frameHeight, setFrameHeight] = useState<number>(construction.height || 400);
     const [beamThickness, setBeamThickness] = useState<number>(construction.beamThickness || 22);
     const [isAnyModalOpen, setIsAnyModalOpen] = useState(false);
 
     const [hingeSide, setHingeSide] = useState<HandleSideEnum | undefined>(construction.hingeSide ?? undefined);
+    const [wireSide, setWireSide] = useState<HandleSideEnum | undefined>(construction.wireSide ?? undefined);
     const [hasHandle, setHasHandle] = useState<boolean>(construction.hasHandle || false);
     const [handleSide, setHandleSide] = useState<HandleSideEnum | undefined>(construction.handleSide ?? undefined);
     const [handleOffset, setHandleOffset] = useState<number | undefined>(construction.handleOffset ? Number(construction.handleOffset) : undefined);
@@ -58,6 +73,13 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
         return typeof construction.cutParams === 'string'
             ? JSON.parse(construction.cutParams)
             : construction.cutParams as CutDefaultParameters;
+    });
+
+    const [operationParams, setOperationParams] = useState<Record<string, unknown> | undefined>(() => {
+        if (!construction.operationParams) return undefined;
+        return typeof construction.operationParams === 'string'
+            ? JSON.parse(construction.operationParams)
+            : construction.operationParams as Record<string, unknown>;
     });
 
     const [hingeParams, setHingeParams] = useState<HingeDefaultParameters | undefined>(() => {
@@ -129,6 +151,7 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
                 beamThickness: beamThickness,
                 hasHandle: hasHandle,
                 hingeSide: hingeSide,
+                wireSide: wireSide,
                 hingeParams: hingeParams,
                 handleSide: handleSide,
                 handleOffset: handleOffset,
@@ -136,6 +159,7 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
                 drillParams: drillParams,
                 millParams: millParams,
                 cutParams: cutParams,
+                operationParams: operationParams,
                 orderId: order?.id
             });
 
@@ -164,6 +188,9 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
                     if (freshCut)   setCutParams(freshCut);
                     if (freshHinge) setHingeParams(freshHinge);
 
+                    if (updated.wireSide !== undefined) {
+                        setWireSide(updated.wireSide ?? undefined);
+                    }
                     if (updated.hingeSide !== undefined) {
                         setHingeSide(updated.hingeSide ?? undefined);
                     }
@@ -178,7 +205,7 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
     }, [
         frameWidth, frameHeight, beamThickness,
         hasHandle, handleSide, handleOffset, handlePosition,
-        hingeSide, hingeParams,
+        hingeSide, wireSide, hingeParams,
         drillParams, millParams, cutParams,
         construction, updateConstruction, order, onRefetch,
     ]);
@@ -205,44 +232,83 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
         modalGcode.onClose();
     }, [modalGcode]);
 
+    const { data: editorDetails = [] } = useConstructionDetails(construction.id);
+
+    const beamLabels = useMemo(() => {
+        const byCode = editorDetails
+            .filter(d => d.type === 'PROFILE')
+            .map(d => ({ code: resolveDetailCode(d), name: d.name }))
+            .sort((a, b) => (CODE_PRIORITY[a.code] ?? 99) - (CODE_PRIORITY[b.code] ?? 99));
+
+        const horizontal = byCode.filter(d => isHorizontalCode(d.code));
+        const vertical    = byCode.filter(d => !isHorizontalCode(d.code));
+
+        return {
+            top:    horizontal[0]?.name,
+            bottom: horizontal[1]?.name,
+            left:   vertical.find(d => d.code === 'LEFT')?.name,
+            right:  vertical.find(d => d.code === 'RIGHT')?.name,
+        };
+    }, [editorDetails]);
+
+    const isShelf = useMemo(
+        () => editorDetails.some(d => {
+            const code = resolveDetailCode(d);
+            return code === 'FRONT' || code === 'BACK';
+        }),
+        [editorDetails],
+    );
+
+    const hasHingeDetail = useMemo(
+        () => editorDetails.some(d => String(d.type) === 'HINGE'),
+        [editorDetails],
+    );
+
     const profileSystemFileUrl = construction.profileSystem?.fileUrl;
 
     return (
-        <div className="w-full max-w-[1600px] mt-[72px] gap-2 flex flex-col overflow-hidden mx-auto h-[calc(100vh-120px)]">
-            <div className="flex w-fit justify-start items-center">
-                <Button onClick={onGoBack} className="flex items-center gap-2" color="gray">
-                    <ArrowLeft size={20} /> Повернутися до замовлення
-                </Button>
-            </div>
+        /*
+         * Вікно цілком: і по висоті, і по ширині.
+         *
+         * `mt-[72px]` лишався від нерухомої шапки, якої вже немає — сторінка
+         * починалася з порожньої смуги у 72 пікселі. `max-w-[1600px]` — від
+         * тієї ж старої верстки: на широкому моніторі він відрізав по кілька
+         * сотень пікселів з боків, і бралося це в полотна, бо панель має свої
+         * фіксовані 420. Висота теж від вікна, а не `100vh - 120px` навмання.
+         */
+        <div className="flex h-dvh w-full flex-col gap-3 overflow-hidden p-4">
+            {/* Що саме зараз відкрито — раніше на сторінці не було жодної ознаки */}
+            <PageHeader
+                title={`Конструкція ${construction.constructionNo}`}
+                badges={
+                    <>
+                        {construction.profileSystem?.title && (
+                            <HeaderBadge>{construction.profileSystem.title}</HeaderBadge>
+                        )}
+                        <HeaderBadge>
+                            {confirmedFrameWidth} × {confirmedFrameHeight} мм
+                        </HeaderBadge>
+                        {order?.orderNumber && <HeaderBadge mono>№ {order.orderNumber}</HeaderBadge>}
+                    </>
+                }
+                leading={
+                    <Button type="button" variant="outline" onClick={onGoBack}>
+                        <ArrowLeft /> До замовлення
+                    </Button>
+                }
+            />
 
-            <div className="flex-1 flex relative overflow-hidden gap-4">
-                <div className="flex-1 bg-gray-900 rounded-lg overflow-hidden relative">
-                    <Canvas3DAdvanced
-                        frameWidth={confirmedFrameWidth}
-                        frameHeight={confirmedFrameHeight}
-                        beamThickness={confirmedBeamThickness}
-                        viewMode={viewMode}
-                        transformMode={transformMode}
-                        onMeshesUpdate={handleMeshesUpdate}
-                        onBeamClick={handleBeamClickFromCanvas}
-                        selectedMeshName={selectedMesh?.name || null}
-                        profileSystemFileUrl={profileSystemFileUrl}
-                        hasHandle={hasHandle}
-                        handleSide={handleSide}
-                        hingeSide={hingeSide}
-                        hingeParams={hingeParams}
-                        handleOffset={handleOffset}
-                        handlePosition={handlePosition}
-                        drillParams={drillParams}
-                        cutParams={cutParams}
-                        millParams={millParams}
-                        hideDimensions={isAnyModalOpen}
-                        focusedHole={focusedHole}
-                        onHoleHover={setFocusedHole}
-                    />
-                </div>
-
-                <div className="w-[420px] bg-gray-800 rounded-lg border border-gray-700 overflow-y-auto flex flex-col">
+            <div className="relative flex flex-1 gap-3 overflow-hidden">
+                {/*
+                  * Панель параметрів ліворуч, полотно праворуч.
+                  *
+                  * Читають зліва направо: спершу «що я задаю», потім «що з
+                  * цього вийшло». Коли панель стояла праворуч, погляд після
+                  * кожної правки повертався назад через усю ширину екрана —
+                  * а правок тут десятки поспіль.
+                  */}
+                {!readOnly && (
+                <div className="flex w-[420px] shrink-0 flex-col overflow-y-auto rounded-xl border border-border bg-card">
                     <ParametersPanel
                         key={panelKey}
                         construction={construction}
@@ -253,6 +319,8 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
                         setMillParams={setMillParams}
                         cutParams={cutParams}
                         setCutParams={setCutParams}
+                        operationParams={operationParams}
+                        setOperationParams={setOperationParams}
                         hingeParams={hingeParams}
                         setHingeParams={setHingeParams}
                         frameWidth={frameWidth}
@@ -273,6 +341,8 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
                         isUpdating={isUpdating}
                         hingeSide={hingeSide}
                         setHingeSide={setHingeSide}
+                        wireSide={wireSide}
+                        setWireSide={setWireSide}
                         onHoleInputFocus={setFocusedHole}
                         focusedHole={focusedHole}
                     />
@@ -289,9 +359,44 @@ export default function ConstructionEditor({construction, order, onGoBack, onRef
                         />
                     )}
                 </div>
+                )}
+                {/* Полотно темніше за панель — так модель читається на фоні */}
+                <div className="relative flex-1 overflow-hidden rounded-xl border border-border bg-background">
+                    <Canvas3DAdvanced
+                        beamLabels={beamLabels}
+                        hasHinge={hasHingeDetail}
+                        isShelf={isShelf}
+                        operationParams={operationParams}
+                        frameWidth={confirmedFrameWidth}
+                        frameHeight={confirmedFrameHeight}
+                        beamThickness={confirmedBeamThickness}
+                        viewMode={viewMode}
+                        transformMode={transformMode}
+                        onMeshesUpdate={handleMeshesUpdate}
+                        // У перегляді клік по балці нічого не відкриває, тож і
+                        // підсвічувати обрану нема сенсу
+                        onBeamClick={readOnly ? undefined : handleBeamClickFromCanvas}
+                        selectedMeshName={readOnly ? null : selectedMesh?.name || null}
+                        profileSystemFileUrl={profileSystemFileUrl}
+                        hasHandle={hasHandle}
+                        handleSide={handleSide}
+                        hingeSide={hingeSide}
+                        hingeParams={hingeParams}
+                        handleOffset={handleOffset}
+                        handlePosition={handlePosition}
+                        drillParams={drillParams}
+                        cutParams={cutParams}
+                        millParams={millParams}
+                        hideDimensions={isAnyModalOpen || readOnly}
+                        viewFromBack={readOnly}
+                        focusedHole={focusedHole}
+                        onHoleHover={setFocusedHole}
+                    />
+                </div>
+
             </div>
 
-            {gcodeData && (
+            {!readOnly && gcodeData && (
                 <GcodeModal
                     {...modalGcode}
                     onClose={handleGcodeModalClose}

@@ -1,6 +1,6 @@
 import {ComponentProps, FC} from "react";
+import {XIcon} from "lucide-react";
 import {cn} from "@/helpers/cn";
-import { XModalIconSvg } from "@/assets";
 
 interface ModalTitleProps extends ComponentProps<"div"> {
     onClose?: () => void
@@ -11,7 +11,10 @@ const ModalTitle: FC<ModalTitleProps> = ({children, className, onClose, ...props
         <div
             {...props}
             className={cn(
-                "flex flex-row flex-nowrap justify-between font-medium items-start text-lg gap-5",
+                // text-base, а не text-lg: заголовок модалки не змагається
+                // за увагу з полями всередині неї.
+                "flex flex-row flex-nowrap justify-between items-center gap-5",
+                "text-base font-semibold leading-none text-foreground",
                 className
             )}
         >
@@ -19,10 +22,19 @@ const ModalTitle: FC<ModalTitleProps> = ({children, className, onClose, ...props
             {onClose &&
                 <button
                     onClick={onClose}
-                    className={'w-[38px] h-[38px] flex items-center justify-center rounded-full hover:bg-react/500 active:bg-gray/400 cursor-pointer duration-300 shrink-0'}
+                    aria-label="Закрити"
+                    // Кнопка закриття з dialog.tsx проєкту dashboard: хрестик
+                    // приглушений і проявляється під курсором, замість того щоб
+                    // весь час змагатися із заголовком поруч.
+                    className={cn(
+                        'group flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded',
+                        'outline-none transition-[color,box-shadow]',
+                        'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                        'disabled:pointer-events-none',
+                    )}
                     type={'reset'}
                 >
-                    <img src={XModalIconSvg} alt={'x'}/>
+                    <XIcon size={16} className="opacity-60 transition-opacity group-hover:opacity-100"/>
                 </button>
             }
         </div>

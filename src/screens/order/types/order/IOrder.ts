@@ -4,8 +4,11 @@ export interface IOrderCostItem {
     color: string | null;
     detailCode: string;
     totalLength: number;
+    /** Скільки прутків фізично взято за розкроєм — ціле, з округленням угору. */
     beamsUsed: number;
     wasteLength: number;
+    /** Довжина балки, зафіксована на момент розрахунку, мм. */
+    beamLength: number;
     pricePerBeam: number;
     subtotalUsd: number;
     subtotalUah: number;
@@ -68,6 +71,8 @@ export interface IOrderCostCutPlanBar {
 export interface IOrderCostCutPlanMaterial {
     articleCode: string;
     color: string | null;
+    /** Довжина прутка, з якого різали, мм — прийшла з рядка вартості. */
+    beamLength: number;
     bars: IOrderCostCutPlanBar[];
 }
 
@@ -112,5 +117,14 @@ export interface IOrder {
         code: string;
         title: string;
     };
+    /**
+     * Замовлення взяте в роботу в 1С і більше не редагується.
+     *
+     * Позначку ставить сама 1С, коли заводить виробниче завдання. Бек після
+     * цього відхиляє будь-яку зміну замовлення й конструкцій, тож на екрані
+     * такі дії треба прибирати — інакше кнопка є, а результат 409.
+     */
+    isLockedBy1C?: boolean;
+    lockedAt?: string | null;
     cost: IOrderCost | null;
 }

@@ -26,13 +26,18 @@ export interface IConstructionForm {
     hasHandle?: boolean;
     handleSide?: HandleSideEnum | null;
     hingeSide?: HandleSideEnum | null;
+    wireSide?: HandleSideEnum | null;
     handleOffset?: number | null;
     handlePosition?: number | null;
     colorId?: number | null;
-    handleColorId?: number | null;
+    /** Скільки однакових конструкцій створити — повторює сервер. */
+    quantity?: number;
+    /** Чи ставити завіси. Півот може бути й без них. */
+    hasHinge?: boolean;
 }
 
 export interface IConstructionFormUpdate {
+    operationParams?: Record<string, unknown> | null;
     orderId?: number;
     profileSystemId?: number;
     constructionStatusId?: number;
@@ -44,6 +49,7 @@ export interface IConstructionFormUpdate {
     glassFillId?: number | null;
     hasHandle?: boolean;
     hingeSide?: HandleSideEnum | null;
+    wireSide?: HandleSideEnum | null;
     handleSide?: HandleSideEnum | null;
     handleOffset?: number | null;
     handlePosition?: number | null;

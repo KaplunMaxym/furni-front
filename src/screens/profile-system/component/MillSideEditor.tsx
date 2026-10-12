@@ -1,80 +1,106 @@
-import React, {useState} from "react";
-import { useForm } from "react-hook-form";
-import Input from "@/ui/input/Input";
+import React from "react";
+import ParamField from "./ParamField";
+import ParamGroup from "./ParamGroup";
 import { DrillSide, MillSideOption, MillSideParams } from "@/screens/profile-system/types/OperationDetailsType";
+import { MILL_HINTS } from "@/constants/paramHints";
+import { MILL_SIDES_LABELS } from "@/screens/profile-system/constants/profileSystemConstants";
+
+export interface MillExtraField {
+    key: string;
+    label: string;
+}
 
 export interface MillSideEditorProps {
     side: DrillSide;
     params: MillSideParams | undefined;
     onSave: (side: DrillSide, field: keyof MillSideParams, value: number | MillSideOption) => void;
     pending: boolean;
+    extraFields?: MillExtraField[];
+    onSaveExtra?: (field: string, value: number) => void;
+    extraPending?: boolean;
 }
 
-interface MillForm {
-    millLength: number;
-}
+const MillSideEditor: React.FC<MillSideEditorProps> = ({
+    side,
+    params,
+    onSave,
+    pending,
+    extraFields = [],
+    onSaveExtra,
+    extraPending,
+}) => {
+    const hasPair = params?.millLengthStart !== undefined || params?.millLengthEnd !== undefined;
 
-const MillSideEditor: React.FC<MillSideEditorProps> = ({ side, params, onSave, pending }) => {
-    const [editing, setEditing] = useState(false);
-
-    const { control, handleSubmit, reset } = useForm<MillForm>({
-        defaultValues: { millLength: params?.millLength ?? 0 },
-    });
-
-    const handleSave = handleSubmit((data) => {
-        onSave(side, "millLength", data.millLength);
-        setEditing(false);
-    });
-
-    const handleCancel = () => {
-        reset({ millLength: params?.millLength ?? 0 });
-        setEditing(false);
+    const extraValue = (key: string) => {
+        const v = (params as unknown as Record<string, unknown> | undefined)?.[key];
+        return typeof v === "number" ? v : undefined;
     };
 
     return (
-        <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-row pt-4 items-center gap-4">
-                <span className="text-xs w-auto text-gray-400 uppercase">Mill Length</span>
-                {editing ? (
-                    <div className="flex gap-1 items-center">
-                        <Input
-                            control={control}
-                            name="millLength"
-                            type="number"
-                            classNameContainer="mb-0"
-                            className="text-sm"
-                            onKeyDown={(e) => {
-                                if (e.key === "Enter") handleSave();
-                                if (e.key === "Escape") handleCancel();
-                            }}
-                        />
-                        <button
-                            onClick={handleSave}
-                            disabled={pending}
-                            className="text-xs px-2 py-1 bg-emerald/500 text-white rounded hover:bg-emerald/600 disabled:opacity-50 whitespace-nowrap"
-                        >
-                            Зберегти
-                        </button>
-                        <button
-                            onClick={handleCancel}
-                            className="text-xs px-2 py-1 bg-red/600 font-bold rounded hover:bg-red/500 whitespace-nowrap"
-                        >
-                            Скасувати
-                        </button>
-                    </div>
-                ) : (
-                    <div
-                        className="flex items-center gap-1 group cursor-pointer"
-                        onClick={() => { reset({ millLength: params?.millLength ?? 0 }); setEditing(true); }}
-                    >
-                        <span className="text-sm font-medium">
-                            {params?.millLength ?? <span className="text-gray-400 italic">—</span>}
-                        </span>
-                        <span className="opacity-0 group-hover:opacity-100 text-xs text-green-600">✎</span>
-                    </div>
-                )}
-            </div>
-        </div>
+        <ParamGroup>
+            {hasPair ? (
+                <>
+                    <ParamField
+                        label="Довжина, початок"
+                        hint={MILL_HINTS.millLengthStart}
+                        value={params?.millLengthStart}
+                        unit="мм"
+                        pending={pending}
+                        onSave={val => {
+                            const num = Number(val);
+                            if (!Number.isNaN(num)) onSave(side, "millLengthStart", num);
+                        }}
+                    />
+                    <ParamField
+                        label="Довжина, кінець"
+                        hint={MILL_HINTS.millLengthEnd}
+                        value={params?.millLengthEnd ?? params?.millLengthStart}
+                        unit="мм"
+                        pending={pending}
+                        onSave={val => {
+                            const num = Number(val);
+                            if (!Number.isNaN(num)) onSave(side, "millLengthEnd", num);
+                        }}
+                    />
+                </>
+            ) : (
+                <ParamField
+                    label="Довжина фрезерування"
+                    hint={MILL_HINTS.millLength}
+                    value={params?.millLength}
+                    unit="мм"
+                    pending={pending}
+                    onSave={val => {
+                        const num = Number(val);
+                        if (!Number.isNaN(num)) onSave(side, "millLength", num);
+                    }}
+                />
+            )}
+
+            {extraFields.map(f => (
+                <ParamField
+                    key={f.key}
+                    label={f.label}
+                    hint={MILL_HINTS[f.key]}
+                    value={extraValue(f.key)}
+                    unit="мм"
+                    pending={extraPending}
+                    onSave={val => {
+                        const num = Number(val);
+                        if (!Number.isNaN(num)) onSaveExtra?.(f.key, num);
+                    }}
+                />
+            ))}
+
+            <ParamField
+                label="Сторони фрезерування"
+                hint={MILL_HINTS.millSides}
+                // У базі лишається `both`/`start`/`end` — на екран іде підпис
+                value={params?.millSides ? MILL_SIDES_LABELS[params.millSides] : undefined}
+                readOnly
+                onSave={() => undefined}
+            />
+        </ParamGroup>
     );
 };
 

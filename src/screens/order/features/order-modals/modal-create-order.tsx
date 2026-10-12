@@ -16,6 +16,8 @@ import {useOrderStatus} from "@/screens/order/hooks/order-status/useOrderStatus"
 import {useClient} from "@/screens/client/hooks/useClient";
 import {useNavigate} from "react-router";
 import {IOrderQuery} from "@/screens/order/types/order/IOrderQuery";
+import {useAuthStore} from "@/store/auth/authReducer";
+import {isDealerRole} from "@/config/RoleEnum";
 
 type IOrderCreateModal = ModalProps & {
     order?: IOrderQuery | null;
@@ -25,10 +27,21 @@ const OrderCreateModal: FC<IOrderCreateModal> = ({ order, ...props }) => {
     const navigate = useNavigate();
     const isEditMode = !!order;
 
-    const { data: dataOrderStatus, isPending: isPendingOrderStatus } = useOrderStatus();
-    const { data: dataClients, isPending: isPendingClients } = useClient();
+    /*
+     * Дилер завжди замовляє на себе, і його цінова категорія задана заздалегідь
+     * у картці клієнта. Тому обидва поля для нього не показуються й не
+     * надсилаються: клієнта і категорію підставляє сервер. Довідник клієнтів
+     * йому теж закритий, тож запит за ним не робимо взагалі — інакше кожне
+     * відкриття форми впиралося б у 403.
+     */
+    const { role } = useAuthStore();
+    const isDealer = isDealerRole(role);
 
-    const { control, handleSubmit, reset, setError, clearErrors, formState: { errors }, setValue, watch } = useForm<IOrderForm>({
+    const { data: dataOrderStatus, isPending: isPendingOrderStatus } = useOrderStatus();
+    const { data: dataClients, isPending: isPendingClients } = useClient({ enabled: !isDealer });
+
+    const { control, handleSubmit, trigger, reset, setError, clearErrors, formState: { errors, isValid }, setValue, watch } = useForm<IOrderForm>({
+        mode: 'onChange',
         defaultValues: {
             name: '',
             clientId: '',
@@ -40,7 +53,7 @@ const OrderCreateModal: FC<IOrderCreateModal> = ({ order, ...props }) => {
     const { mutateAsync: createOrder, isPending: isCreating } = useOrderCreateMutation();
     const { mutateAsync: updateOrder, isPending: isUpdating } = useOrderUpdateMutation();
 
-    const isPending = isCreating || isUpdating || isPendingOrderStatus || isPendingClients;
+    const isPending = isCreating || isUpdating || isPendingOrderStatus || (!isDealer && isPendingClients);
 
     const formattedOrderStatusOptions = dataOrderStatus?.map(status => ({
         label: status.title,
@@ -69,30 +82,48 @@ const OrderCreateModal: FC<IOrderCreateModal> = ({ order, ...props }) => {
     }, [props.open, isEditMode, order, setValue, reset]);
 
     const onInvalid = () => {
+        if (isDealer) return;
+
         const data = watch();
         if (!data.clientId || data.clientId === '') {
             setError('clientId', { message: 'Клієнт обов\'язковий' });
         }
     };
 
+    /**
+     * Кнопка збереження вимкнена, поки форма невалідна.
+     *
+     * У режимі редагування значення підставляються через `setValue`, а він не
+     * перераховує `isValid` — без явного `trigger` кнопка лишалась би сірою на
+     * вже заповненій формі. У режимі створення `trigger` не викликаємо: він би
+     * одразу підсвітив червоним усі порожні обов'язкові поля.
+     */
+    useEffect(() => {
+        if (props.open && isEditMode) void trigger();
+    }, [props.open, isEditMode, trigger]);
+
     const onSubmit = async (data: IOrderForm) => {
         try {
-            let hasError = false;
-
-            if (!data.clientId || data.clientId === '') {
+            if (!isDealer && (!data.clientId || data.clientId === '')) {
                 setError('clientId', { message: 'Клієнт обов\'язковий' });
-                hasError = true;
+                return;
             }
 
-            if (hasError) return;
+            /*
+             * Полів, яких дилер не бачить, не надсилаємо взагалі — не порожніми
+             * і не «як було». Сервер їх усе одно відкидає, але з `undefined`
+             * вони не потрапляють у тіло запиту й не читаються в мережі.
+             */
+            const ownership = isDealer
+                ? {}
+                : { clientId: data.clientId, priceCategory: data.priceCategory };
 
             if (isEditMode && order) {
                 const updateData = {
                     id: order.id,
                     name: data.name,
-                    clientId: data.clientId,
                     statusId: data.statusId || undefined,
-                    priceCategory: data.priceCategory,
+                    ...ownership,
                 };
                 await updateOrder(updateData);
 
@@ -101,9 +132,8 @@ const OrderCreateModal: FC<IOrderCreateModal> = ({ order, ...props }) => {
             } else {
                 const createData = {
                     name: data.name,
-                    clientId: data.clientId,
                     statusId: data.statusId || undefined,
-                    priceCategory: data.priceCategory,
+                    ...ownership,
                 };
 
                 const response = await createOrder(createData);
@@ -133,14 +163,14 @@ const OrderCreateModal: FC<IOrderCreateModal> = ({ order, ...props }) => {
         <Modal
             {...props}
             className={cn(
-                'flex flex-col gap-2.5 max-w-[500px] min-h-10 rounded-base-mini mx-2 overflow-y-auto max-h-dvh h-auto',
+                'max-w-[500px]',
             )}
         >
             <Modal.Title className={'gap-2'} onClose={props.onClose}>
                 {isEditMode ? 'Редагувати замовлення' : 'Створити замовлення'}
             </Modal.Title>
 
-            <Modal.Body className={'flex flex-col gap-4 rounded-xl p-3'}>
+            <Modal.Body className={'flex flex-col gap-4'}>
                 <form onSubmit={handleSubmit(onSubmit, onInvalid)} className={'flex flex-col gap-4'}>
                     <div className={'relative flex flex-col gap-[5px] h-fit'}>
                         <p className="text-xs font-semibold pl-4">Назва (необов'язково)</p>
@@ -152,8 +182,9 @@ const OrderCreateModal: FC<IOrderCreateModal> = ({ order, ...props }) => {
                         />
                     </div>
 
+                    {!isDealer && (
                     <div className={'relative flex flex-col gap-[5px] h-fit'}>
-                        <p className="text-xs font-semibold pl-4">Клієнт *</p>
+                        <p className="text-xs font-semibold pl-4">Клієнт</p>
                         {!isPendingClients ? (
                             <>
                                 <SelectorSearch
@@ -173,14 +204,16 @@ const OrderCreateModal: FC<IOrderCreateModal> = ({ order, ...props }) => {
                                     hasError={!!errors.clientId}
                                 />
                                 {errors.clientId && (
-                                    <p className={'text-red-500 text-xs mt-1'}>{errors.clientId.message as string}</p>
+                                    <p className={'text-destructive-foreground text-xs mt-1'}>{errors.clientId.message as string}</p>
                                 )}
                             </>
                         ) : (
-                            <p className="text-gray-400 text-sm">Завантаження клієнтів...</p>
+                            <p className="text-muted-foreground text-sm">Завантаження клієнтів...</p>
                         )}
                     </div>
+                    )}
 
+                    {!isDealer && (
                     <div className={'relative flex flex-col gap-[5px] h-fit'}>
                         <p className="text-xs font-semibold pl-4">Цінова категорія</p>
                         <SelectorSearch
@@ -196,6 +229,7 @@ const OrderCreateModal: FC<IOrderCreateModal> = ({ order, ...props }) => {
                             searchable={false}
                         />
                     </div>
+                    )}
 
                     <div className={'relative flex flex-col gap-[5px] h-fit'}>
                         <p className="text-xs font-semibold pl-4">Статус (необов'язково)</p>
@@ -213,7 +247,7 @@ const OrderCreateModal: FC<IOrderCreateModal> = ({ order, ...props }) => {
                                 searchable={true}
                             />
                         ) : (
-                            <p className="text-gray-400 text-sm">Завантаження статусів...</p>
+                            <p className="text-muted-foreground text-sm">Завантаження статусів...</p>
                         )}
                     </div>
 
@@ -221,7 +255,7 @@ const OrderCreateModal: FC<IOrderCreateModal> = ({ order, ...props }) => {
                         <Button
                             type="button"
                             onClick={props.onClose}
-                            color="red"
+                            color="blackNoneLine"
                             className="flex-1"
                             disabled={isPending}
                         >
@@ -231,7 +265,7 @@ const OrderCreateModal: FC<IOrderCreateModal> = ({ order, ...props }) => {
                             type="submit"
                             color="greenDarkgreen"
                             className="flex-1"
-                            disabled={isPending}
+                            disabled={isPending || !isValid}
                         >
                             {isEditMode ? 'Оновити замовлення' : 'Створити замовлення'}
                         </Button>

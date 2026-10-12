@@ -2,7 +2,13 @@ import React, {FC, useState} from "react";
 import { useParams, useNavigate } from "react-router";
 import MainLayout from "@/ui/layouts/main-layout/MainLatout";
 import Button from "@/ui/button/Button";
-import {ArrowLeft, Edit2, Plus, Eye, ChevronDown, Download, Copy} from "lucide-react";
+import { Button as UiButton } from "@/ui/shadcn/button";
+import PageHeader, { HeaderBadge, SectionHeading } from "@/ui/page-header/PageHeader";
+import { SectionLabel } from "@/ui/section-label/SectionLabel";
+import {
+    ArrowLeft, ChevronDown, Copy, Download, Edit2, Eye, Info, Loader2,
+    type LucideIcon, Plus, Scissors, SquareStack, Trash2, Wallet,
+} from "lucide-react";
 import Loading from "@/ui/loading/Loading";
 import useModal from "@/hooks/useModal";
 import OrderCreateModal from "@/screens/order/features/order-modals/modal-create-order";
@@ -16,7 +22,7 @@ import { useOrderUpdateMutation } from "@/screens/order/hooks/order/useOrderUpda
 import { useOrderStatus } from "@/screens/order/hooks/order-status/useOrderStatus";
 import SelectorSearch from "@/componets/select/virtualized-list/SelectorSearch";
 import { cn } from "@/helpers/cn";
-import ButtonDel from "@/ui/button/ButtonDel";
+import RowActionsCell from "@/ui/table/RowActionsCell";
 import PlusSvg from "@/assets/plusSvg";
 import ConstructionDetailsView from "@/screens/order/component/ConstructionDetailsView";
 import {useConstructionDetailOperationCompleteMutation} from "@/screens/construction/hooks/construction-details/useConstructionDetailOperationCompleteMutation";
@@ -24,7 +30,7 @@ import {useConstructionDetailCompleteMutation} from "@/screens/construction/hook
 import ConstructionCreateModal from "@/screens/construction/features/modals/modal-create-update-construction/ modal-create-сonstruction";
 import ConstructionDetailModal from "@/screens/construction/features/modals/construction-details-modal/construction-details-modal";
 import {useGcode} from "@/screens/construction/hooks/gcode/useGcode";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 import {useGcodeByDetail} from "@/screens/construction/hooks/gcode/useGcodeByDetail";
 import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
@@ -41,7 +47,7 @@ import {
     IOrderCostServiceItem
 } from "@/screens/order/types/order/IOrder";
 import {useAuthStore} from "@/store/auth/authReducer";
-import {RoleEnum} from "@/config/RoleEnum";
+import {isDealerRole, RoleEnum} from "@/config/RoleEnum";
 import {CutPlanBlock} from "@/screens/order/component/CutPlanBlock";
 import OrderCostBlock from "@/screens/order/component/OrderCostBlock";
 import { PRICE_CATEGORIES } from "@/screens/order/types/order/IOrderForm";
@@ -49,6 +55,50 @@ import RecalculateButton from "@/screens/order/component/RecalculateButton";
 import {downloadSpecificationPdf} from "@/screens/order/component/SpecificationPdf";
 import {downloadCutPlanPdf, generateCutPlanPdfBlob} from "@/screens/order/component/CutPlanPdf";
 import {useBarCutGcode} from "@/screens/order/hooks/order/useBarCutGcode";
+
+type SectionId = 'general' | 'constructions' | 'cost' | 'cut';
+
+/**
+ * Групи в розкладі вартості конструкції.
+ *
+ * Кольору в підписах немає навмисно. Фіолетовий, синій і зелений нічого не
+ * означали — це просто три назви розділів, — але тягнули на себе увагу
+ * сильніше за самі суми, заради яких сюди й дивляться.
+ */
+const COST_GROUPS = [
+    { key: 'glassItems',     label: 'Скло'      },
+    { key: 'accessoryItems', label: 'Аксесуари' },
+    { key: 'serviceItems',   label: 'Послуги'   },
+] as const;
+
+/** Незмінне значення виглядає як поле — так ряд не перекошується. */
+const READONLY_FIELD =
+    'flex h-9 items-center truncate rounded-md border border-input px-3 text-sm text-muted-foreground';
+
+/**
+ * Рядок підсумку: підпис ліворуч, значення праворуч.
+ *
+ * Чотирма колонками це читалося погано: підписи різної довжини («Конструкцій»
+ * і «Курс НБУ») не вирівнювалися, а числа губилися під ними. Рядками око йде
+ * зверху вниз по одній колонці значень.
+ */
+const SummaryRow: FC<{ label: string; value: string; hint?: string; strong?: boolean }> = ({
+    label,
+    value,
+    hint,
+    strong,
+}) => (
+    <div className="flex items-baseline justify-between gap-3 py-2">
+        <span className="text-sm text-muted-foreground">{label}</span>
+
+        <span className="flex items-baseline gap-2 whitespace-nowrap">
+            <span className={cn('tabular-nums text-foreground', strong ? 'text-base font-semibold' : 'text-sm')}>
+                {value}
+            </span>
+            {hint && <span className="text-xs tabular-nums text-muted-foreground">{hint}</span>}
+        </span>
+    </div>
+);
 
 type GCodeItem = {
     operationId: number;
@@ -64,6 +114,15 @@ const OrderDetails: FC = () => {
     const navigate = useNavigate();
     const { role } = useAuthStore();
     const canSeeCost = role !== RoleEnum.STRUCTURAL_ENGINEER;
+
+    /*
+     * Дилер бачить ціну повністю — вона порахована за його категорією, і саме
+     * заради неї він сюди й заходить. Закрите для нього інше: усе виробниче.
+     * Розкрій балок, склад деталей, вивантаження G-code і специфікації, обмін
+     * із 1С — це внутрішня кухня заводу; дилеру вона нічого не пояснює про
+     * його замовлення, зате показує, з чого й за скільки воно робиться.
+     */
+    const isDealer = isDealerRole(role);
 
     const modalEditOrder = useModal();
     const modalConstructionDetails = useModal();
@@ -82,6 +141,7 @@ const OrderDetails: FC = () => {
     const [expandedConstructionCost, setExpandedConstructionCost] = useState<Set<number>>(new Set());
     const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
     const [selectedPriceCategory, setSelectedPriceCategory] = useState<string>('');
+    const [section, setSection] = useState<SectionId>('constructions');
 
     const { data: order, isPending: isPendingOrder, isError, error } = useOrderDetails(orderId);
     const { data: orderConstruction, isPending: isPendingOrderConstruction, refetch: refetchConstructions } = useConstructionByOrder(orderId);
@@ -310,7 +370,7 @@ const OrderDetails: FC = () => {
             }
 
             if (fileCount === 0) {
-                toast.error('G-code різання не знайдено', { duration: 4000, position: 'top-right' });
+                toast.error('G-code різання не знайдено', { duration: 4000 });
                 return;
             }
 
@@ -319,11 +379,11 @@ const OrderDetails: FC = () => {
 
             toast.success(
                 errors.length === 0 ? 'G-code різання завантажено' : `Завантажено (${errors.length} пропущено)`,
-                { duration: 3000, position: 'top-right' }
+                { duration: 3000 }
             );
         } catch (error) {
             console.error('Error downloading cut g-code:', error);
-            toast.error('Помилка завантаження архіву', { duration: 4000, position: 'top-right' });
+            toast.error('Помилка завантаження архіву', { duration: 4000 });
         } finally {
             setIsDownloadingCutSingleGCode(false);
         }
@@ -401,7 +461,7 @@ const OrderDetails: FC = () => {
             }
 
             if (fileCount === 0) {
-                toast.error('G-code різання не знайдено', { duration: 4000, position: 'top-right' });
+                toast.error('G-code різання не знайдено', { duration: 4000 });
                 return;
             }
 
@@ -410,11 +470,11 @@ const OrderDetails: FC = () => {
 
             toast.success(
                 errors.length === 0 ? 'G-code різання завантажено' : `Завантажено (${errors.length} пропущено)`,
-                { duration: 3000, position: 'top-right' }
+                { duration: 3000 }
             );
         } catch (error) {
             console.error('Error downloading cut g-code:', error);
-            toast.error('Помилка завантаження архіву', { duration: 4000, position: 'top-right' });
+            toast.error('Помилка завантаження архіву', { duration: 4000 });
         } finally {
             setIsDownloadingCutGCode(false);
         }
@@ -492,13 +552,11 @@ const OrderDetails: FC = () => {
 
             toast.success(`G-code завантажено: ${fileName}`, {
                 duration: 3000,
-                position: 'top-right',
             });
         } catch (error) {
             console.error('Error downloading G-Code:', error);
             toast.error('Помилка завантаження G-Code', {
                 duration: 4000,
-                position: 'top-right',
             });
         }
     };
@@ -510,7 +568,6 @@ const OrderDetails: FC = () => {
             if (gcode.length === 0) {
                 toast.error('G-code для цієї деталі відсутній', {
                     duration: 3000,
-                    position: 'top-right',
                 });
                 return;
             }
@@ -526,13 +583,11 @@ const OrderDetails: FC = () => {
 
             toast.success(`G-code архів завантажено (${gcode.length} файлів)`, {
                 duration: 3000,
-                position: 'top-right',
             });
         } catch (error) {
             console.error('Error downloading all G-Code:', error);
             toast.error('Помилка завантаження G-Code', {
                 duration: 4000,
-                position: 'top-right',
             });
         }
     };
@@ -583,7 +638,6 @@ const OrderDetails: FC = () => {
             if (zip.file(/.*/).length === 0) {
                 toast.error('G-code файли не знайдено', {
                     duration: 4000,
-                    position: 'top-right',
                 });
                 return;
             }
@@ -597,13 +651,11 @@ const OrderDetails: FC = () => {
 
             toast.success(successMsg, {
                 duration: 3000,
-                position: 'top-right',
             });
         } catch (error) {
             console.error('Error downloading order data:', error);
             toast.error('Помилка завантаження архіву', {
                 duration: 4000,
-                position: 'top-right',
             });
         } finally {
             setIsDownloadingGCode(false);
@@ -622,6 +674,37 @@ const OrderDetails: FC = () => {
         return 'bg-emerald/500';
     };
 
+    /*
+     * Пункти меню завантажень одним списком.
+     *
+     * Було шість майже однакових <button> по п'ятнадцять рядків кожна —
+     * додати сьомий пункт означало скопіювати ще один такий блок.
+     */
+    /*
+     * Пункти меню завантаження.
+     *
+     * Раніше два з них підміняли свій напис на «Завантаження…», але меню
+     * закривається на кліку — цього напису ніхто не бачив. Пункт тепер завжди
+     * називається однаково, а хід завантаження показує сама кнопка.
+     */
+    const downloadActions: Array<{ label: string; onSelect: () => void }> = [
+        { label: 'G-Code, усі файли', onSelect: handleDownloadAllOrderData },
+        { label: 'G-Code, вибірково', onSelect: modalGCodeSelection.onOpen },
+        ...(order?.cost?.cutPlan?.length ? [
+            { label: 'G-Code різання', onSelect: handleDownloadCutSingleGCode },
+            { label: 'G-Code різання, розбито', onSelect: handleDownloadCutGCode },
+        ] : []),
+        { label: 'Специфікація (PDF)', onSelect: handleDownloadSpecification },
+        ...(order?.cost?.cutPlan?.length
+            ? [{ label: 'Розкрій профілю (PDF)', onSelect: handleDownloadCutPlan }]
+            : []),
+        { label: 'Лейбли (PDF)', onSelect: handleDownloadBarcode },
+    ];
+
+    // Будь-яке з завантажень тримає кнопку зайнятою — паралельно їх не запускають
+    const isDownloading =
+        isDownloadingGCode || isDownloadingLabels || isDownloadingCutGCode || isDownloadingCutSingleGCode;
+
     if (isPendingOrder) {
         return (
             <MainLayout>
@@ -636,14 +719,10 @@ const OrderDetails: FC = () => {
         return (
             <MainLayout>
                 <div className="flex flex-col gap-4 p-4">
-                    <Button
-                        onClick={handleBack}
-                        className="w-fit"
-                        color="gray"
-                    >
-                        <ArrowLeft size={20} /> Назад до замовлень
-                    </Button>
-                    <div className="text-red-500 text-center py-8">
+                    <UiButton type="button" variant="outline" className="w-fit" onClick={handleBack}>
+                        <ArrowLeft /> Назад до замовлень
+                    </UiButton>
+                    <div className="py-8 text-center text-sm text-destructive-foreground">
                         Помилка завантаження замовлення: {error?.message || 'Невідома помилка'}
                     </div>
                 </div>
@@ -651,523 +730,617 @@ const OrderDetails: FC = () => {
         );
     }
 
+    const constructions = orderConstruction ?? [];
+
+    /*
+     * Замовлення взяте в роботу в 1С.
+     *
+     * Бек після цього відхиляє будь-яку зміну замовлення й конструкцій, тож
+     * кнопки, які це роблять, зі сторінки зникають: лишити їх означало б
+     * пропонувати дію, що завжди закінчується помилкою.
+     */
+    const isLocked = order?.isLockedBy1C === true;
+    const cutPlan = order.cost?.cutPlan ?? [];
+
+    /*
+     * `hint` — короткий рядок під назвою в боковому меню (скільки чого).
+     * `description` — пояснення над самим розділом: що це і навіщо. Це різні
+     * тексти навмисно: «3 шт» доречне в меню, але як підзаголовок нічого не каже.
+     */
+    const sections: Array<{
+        id: SectionId;
+        label: string;
+        hint: string;
+        description: string;
+        icon: LucideIcon;
+    }> = [
+        {
+            id: 'general',
+            label: 'Основна інформація',
+            /*
+             * Дилер і є замовник — згадувати клієнта в його ж інтерфейсі
+             * дивно: поле з клієнтом для нього приховане, а категорію він
+             * не бачить узагалі.
+             */
+            hint: isDealer ? 'Статус, підсумок' : 'Клієнт, статус, підсумок',
+            description: isDealer
+                ? 'Стан замовлення й підсумкові числа'
+                : 'Замовник, стан замовлення й підсумкові числа',
+            icon: Info,
+        },
+        {
+            id: 'constructions',
+            label: 'Конструкції',
+            hint: constructions.length ? `${constructions.length} шт` : 'Ще немає',
+            // Ні складу деталей, ні файлів для верстата дилер не бачить —
+            // обіцяти їх у підписі означало б відправити його шукати неіснуюче
+            description: isDealer
+                ? 'Вироби замовлення: розміри, скло, колір і вартість'
+                : 'Вироби замовлення, їх деталі та файли для виробництва',
+            icon: SquareStack,
+        },
+        ...(canSeeCost && order.cost ? [{
+            id: 'cost' as const,
+            label: 'Вартість',
+            hint: `${order.cost.totalUsd.toFixed(2)} $`,
+            description: isDealer
+                ? 'З чого складається ваша ціна: профілі, скло, аксесуари, послуги'
+                : 'З чого складається ціна: профілі, скло, аксесуари, послуги',
+            icon: Wallet,
+        }] : []),
+        // Розкрій зʼявляється лише після перерахунку — порожньої вкладки не буде
+        ...(cutPlan.length && !isDealer ? [{
+            id: 'cut' as const,
+            label: 'Розкрій профілю',
+            /*
+             * Тут була довжина `cutPlan` — а це список матеріалів, не прутків.
+             * На одному артикулі підпис читався «1 балок» незалежно від того,
+             * скільки прутків насправді пішло. Рахуємо самі прутки.
+             */
+            hint: `${cutPlan.reduce((s, m) => s + m.bars.length, 0)} прутків`,
+            description: 'Як деталі розкладені по балках і скільки лишається обрізків',
+            icon: Scissors,
+        }] : []),
+    ];
+
+    // Розділ міг зникнути (перерахунок прибрав розкрій) — не лишаємо порожнечу
+    const activeSection = sections.some(s => s.id === section) ? section : 'constructions';
+    const activeMeta = sections.find(item => item.id === activeSection);
+
     return (
         <MainLayout>
-            <div className="w-full px-4">
-                <div className="w-full max-w-[1800px] mx-auto flex flex-col">
-                    <div className="px-4 py-2">
-                        <Button
-                            onClick={handleBack}
-                            color="gray"
-                            className="flex gap-2 w-fit ml-0"
-                        >
-                            <ArrowLeft size={18} />
-                            Назад до замовлень
-                        </Button>
+            <div className="flex w-full flex-col gap-4">
+
+                {/*
+                  * Назва, номер, клієнт і статус — одним рядком.
+                  * Номер у плашці з підписом «№»: без нього «000001» доводилось
+                  * розгадувати — номер це, кількість чи код.
+                  */}
+                <PageHeader
+                    title={order.name}
+                    badges={
+                        <>
+                            <HeaderBadge mono>№ {order.orderNumber}</HeaderBadge>
+                            <HeaderBadge>
+                                {order.client.firstName} {order.client.lastName}
+                            </HeaderBadge>
+                            {order.status?.title && <HeaderBadge>{order.status.title}</HeaderBadge>}
+                            {isLocked && (
+                                <span className="shrink-0 rounded-md border border-chart-3/40 bg-chart-3/15 px-2 py-0.5 text-xs text-chart-3">
+                                    У роботі — редагування закрите
+                                </span>
+                            )}
+                        </>
+                    }
+                    leading={
+                        <UiButton type="button" variant="outline" onClick={handleBack}>
+                            <ArrowLeft /> Повернутися
+                        </UiButton>
+                    }
+                />
+
+                {/*
+                  * Розділи ліворуч, вміст праворуч — та сама розкладка, що на
+                  * сторінці профільної системи: колонка на 240 px і картка поруч.
+                  */}
+                <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
+                    <div className="h-fit rounded-xl border border-border bg-card p-2">
+                        {/* На вузькому екрані меню лягає рядком над вмістом */}
+                        <div className="flex gap-1 overflow-x-auto lg:flex-col lg:overflow-visible">
+                            {sections.map(item => (
+                                <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => setSection(item.id)}
+                                    className={cn(
+                                        'flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors lg:w-full',
+                                        item.id === activeSection
+                                            ? 'bg-primary/10 text-foreground'
+                                            : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+                                    )}
+                                >
+                                    <item.icon className="h-4 w-4 shrink-0" />
+                                    <span className="min-w-0">
+                                        <span className="block truncate text-sm font-medium">{item.label}</span>
+                                        <span className="hidden truncate text-xs text-muted-foreground lg:block">
+                                            {item.hint}
+                                        </span>
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
-                    <div className="flex-1 flex gap-6 overflow-hidden px-4 py-2">
+                    <div className="flex min-w-0 flex-col gap-4">
+                        {/* Який саме розділ відкрито — раніше про це казало лише меню ліворуч */}
+                        {activeMeta && (
+                            <SectionHeading title={activeMeta.label} description={activeMeta.description} />
+                        )}
 
-                        <div className="w-100 h-[calc(100vh-200px)] flex-shrink-0">
-                            <div className="bg-react/600 rounded-xl shadow-sm border border-react/500 overflow-hidden h-full flex flex-col">
-                                <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-blue-100/50">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Номер замовлення</span>
-                                        <span className="text-sm font-bold text-blue-600">{order.orderNumber}</span>
-                                    </div>
-                                </div>
+                        {activeSection === 'general' && (
+                            <div className="flex flex-col gap-4">
+                                {/*
+                                  * Картка з шапкою — щоб цей блок і «Підсумок» під ним
+                                  * читалися як два розділи, а не як плита полів і
+                                  * підписана таблиця під нею.
+                                  */}
+                                <div className="overflow-hidden rounded-xl border border-border bg-card">
+                                    <SectionLabel>Про замовлення</SectionLabel>
 
-                                <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Назва замовлення</label>
-                                        <div className="bg-react/500 border border-gray-100 rounded-lg p-3">
-                                            <p className="text-sm font-semibold text-gray-900">{order.name}</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Клієнт</label>
-                                        <div className="bg-react/500 border border-gray-100 rounded-lg p-3">
-                                            <p className="text-sm font-semibold text-gray-900">
+                                    <div className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4">
+                                        {/*
+                                          * Клієнт і дата в тій самій рамці, що й селекти.
+                                          * Голим текстом поруч із полями вони висіли на
+                                          * іншій висоті, і ряд виглядав перекошеним.
+                                          */}
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="text-xs font-medium text-muted-foreground">Клієнт</span>
+                                            <p className={READONLY_FIELD}>
                                                 {order.client.firstName} {order.client.lastName}
                                             </p>
                                         </div>
-                                    </div>
 
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Статус</label>
-                                        {!isPendingOrderStatus ? (
-                                            <SelectorSearch
-                                                getAndSet={[
-                                                    selectedOrderStatus[order.id] || order.status?.id || '',
-                                                    (value: string | number) => handleStatusChange(Number(value))
-                                                ]}
-                                                options={formattedOrderStatusOptions}
-                                                placeholder="Оберіть статус"
-                                                optionValue="value"
-                                                optionLabel="label"
-                                                searchable={true}
-                                                className="w-full border border-gray-100 rounded-lg"
-                                            />
-                                        ) : (
-                                            <div className="text-gray-400 text-sm py-2">Завантаження...</div>
-                                        )}
-                                    </div>
-
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                                            Цінова категорія
-                                        </label>
-                                        <SelectorSearch
-                                            getAndSet={[
-                                                selectedPriceCategory || order.priceCategory || 'REPRESENTATIVE',
-                                                (value: string | number) => {
-                                                    const str = String(value);
-                                                    setSelectedPriceCategory(str);
-                                                    handlePriceCategoryChange(str);
-                                                }
-                                            ]}
-                                            options={PRICE_CATEGORIES}
-                                            placeholder="Оберіть категорію"
-                                            optionValue="value"
-                                            optionLabel="label"
-                                            isEmptyValueDisable={true}
-                                            searchable={false}
-                                            className="w-full border border-gray-100 rounded-lg"
-                                        />
-                                    </div>
-
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Створено</label>
-                                        <div className="bg-react/500 border border-gray-100 rounded-lg p-3">
-                                            <p className="text-sm text-gray-700">
-                                                {formatDateTime(order.createdAt)}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="px-1 py-2 border-t border-gray-100 bg-gray-50 flex gap-2">
-                                    <Button
-                                        onClick={handleEdit}
-                                        color="greenDarkgreen"
-                                        className="flex-1 !py-2 text-sm"
-                                    >
-                                        <Edit2 size={16} /> Редагувати
-                                    </Button>
-                                    <ButtonDel
-                                        onClick={handleDelete}
-                                        title={'Видалити'}
-                                        className="flex-1 !py-2 text-sm"
-                                    >
-                                    </ButtonDel>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="flex-1 flex flex-col min-w-0 min-h-0">
-                            <div className="flex flex-row gap-2 items-center justify-between mb-4">
-                                <h2 className="text-xl font-bold text-gray-900">Конструкції замовлення</h2>
-
-                                <div className="flex gap-2">
-                                    {!!orderConstruction?.length && (
-                                        <div className="relative">
-                                            <Button
-                                                color="blue"
-                                                className="w-auto mx-0 py-0 h-[40px] gap-1"
-                                                onClick={() => setIsDownloadMenuOpen(p => !p)}
-                                                disabled={isDownloadingGCode || isDownloadingLabels}
-                                            >
-                                                <Download size={14} />
-                                                {(isDownloadingGCode || isDownloadingLabels) ? 'Завантаження...' : 'Завантажити'}
-                                                <ChevronDown
-                                                    size={14}
-                                                    className={cn("transition-transform duration-200", isDownloadMenuOpen && "rotate-180")}
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="text-xs font-medium text-muted-foreground">Статус</span>
+                                            {isPendingOrderStatus ? (
+                                                <p className={READONLY_FIELD}>Завантаження…</p>
+                                            ) : (
+                                                <SelectorSearch
+                                                    getAndSet={[
+                                                        selectedOrderStatus[order.id] || order.status?.id || '',
+                                                        (value: string | number) => handleStatusChange(Number(value)),
+                                                    ]}
+                                                    options={formattedOrderStatusOptions}
+                                                    placeholder="Оберіть статус"
+                                                    optionValue="value"
+                                                    optionLabel="label"
+                                                    searchable
                                                 />
-                                            </Button>
-
-                                            {isDownloadMenuOpen && (
-                                                <>
-                                                    <div
-                                                        className="fixed inset-0 z-10"
-                                                        onClick={() => setIsDownloadMenuOpen(false)}
-                                                    />
-                                                    <div className="absolute right-0 top-[44px] z-20 bg-react/600 border border-react/500 rounded-xl shadow-lg overflow-hidden min-w-[220px]">
-                                                        <button
-                                                            onClick={() => {
-                                                                handleDownloadAllOrderData();
-                                                                setIsDownloadMenuOpen(false);
-                                                            }}
-                                                            disabled={isDownloadingGCode}
-                                                            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-react/500 transition-colors disabled:opacity-50"
-                                                        >
-                                                            <Download size={14} className="text-gray-400" />
-                                                            G-Code всі файли
-                                                        </button>
-                                                        <button
-                                                            onClick={() => {
-                                                                modalGCodeSelection.onOpen();
-                                                                setIsDownloadMenuOpen(false);
-                                                            }}
-                                                            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-react/500 transition-colors"
-                                                        >
-                                                            <Download size={14} className="text-gray-400" />
-                                                            G-Code вибірково
-                                                        </button>
-                                                        {!!order.cost?.cutPlan?.length && (
-                                                            <button
-                                                                onClick={() => {
-                                                                    handleDownloadCutSingleGCode();
-                                                                    setIsDownloadMenuOpen(false);
-                                                                }}
-                                                                disabled={isDownloadingCutSingleGCode}
-                                                                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-react/500 transition-colors disabled:opacity-50"
-                                                            >
-                                                                <Download size={14} className="text-gray-400" />
-                                                                {isDownloadingCutSingleGCode ? 'Завантаження...' : 'G-Code різання'}
-                                                            </button>
-                                                        )}
-                                                        {!!order.cost?.cutPlan?.length && (
-                                                            <button
-                                                                onClick={() => {
-                                                                    handleDownloadCutGCode();
-                                                                    setIsDownloadMenuOpen(false);
-                                                                }}
-                                                                disabled={isDownloadingCutGCode}
-                                                                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-react/500 transition-colors disabled:opacity-50"
-                                                            >
-                                                                <Download size={14} className="text-gray-400" />
-                                                                {isDownloadingCutGCode ? 'Завантаження...' : 'G-Code різання розбито'}
-                                                            </button>
-                                                        )}
-                                                        <button
-                                                            onClick={() => {
-                                                                handleDownloadSpecification();
-                                                                setIsDownloadMenuOpen(false);
-                                                            }}
-                                                            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-react/500 transition-colors"
-                                                        >
-                                                            <Download size={14} />
-                                                            Специфікація (PDF)
-                                                        </button>
-                                                        {!!order.cost?.cutPlan?.length && (
-                                                            <button
-                                                                onClick={() => {
-                                                                    handleDownloadCutPlan();
-                                                                    setIsDownloadMenuOpen(false);
-                                                                }}
-                                                                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-react/500 transition-colors"
-                                                            >
-                                                                <Download size={14} className="text-gray-400" />
-                                                                Розкрій профілю (PDF)
-                                                            </button>
-                                                        )}
-                                                        <button
-                                                            onClick={() => {
-                                                                handleDownloadBarcode();
-                                                                setIsDownloadMenuOpen(false);
-                                                            }}
-                                                            disabled={isDownloadingLabels}
-                                                            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-react/500 transition-colors disabled:opacity-50"
-                                                        >
-                                                            <Download size={14} className="text-gray-400" />
-                                                            Лейбли (PDF)
-                                                        </button>
-                                                    </div>
-                                                </>
                                             )}
                                         </div>
-                                    )}
 
-                                    <RecalculateButton orderId={order.id} />
+                                        {/*
+                                          * Категорія — внутрішня домовленість
+                                          * із клієнтом, а не властивість
+                                          * замовлення, яку йому показують.
+                                          * Сервер її дилеру й не віддає, тож
+                                          * без цієї умови селект стояв би
+                                          * порожній і мовчки пропонував би
+                                          * змінити те, чого дилер не бачить.
+                                          */}
+                                        {!isDealer && (
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="text-xs font-medium text-muted-foreground">Цінова категорія</span>
+                                            <SelectorSearch
+                                                getAndSet={[
+                                                    selectedPriceCategory || order.priceCategory || 'REPRESENTATIVE',
+                                                    (value: string | number) => {
+                                                        const str = String(value);
+                                                        setSelectedPriceCategory(str);
+                                                        handlePriceCategoryChange(str);
+                                                    },
+                                                ]}
+                                                options={PRICE_CATEGORIES}
+                                                placeholder="Оберіть категорію"
+                                                optionValue="value"
+                                                optionLabel="label"
+                                                isEmptyValueDisable
+                                                searchable={false}
+                                            />
+                                        </div>
+                                        )}
 
-                                    <Button
-                                        className="w-auto mx-0 py-0 h-[40px]"
-                                        color="greenDarkgreen"
-                                        onClick={handleCreateConstruction}
-                                    >
-                                        <PlusSvg width={20} height={20} /> Додати конструкцію
-                                    </Button>
-                                </div>
-                            </div>
-
-                            <div className="flex flex-col gap-2">
-                                {canSeeCost && order.cost && (
-                                    <OrderCostBlock
-                                        cost={order.cost}
-                                        constructions={orderConstruction}
-                                    />
-                                )}
-
-                                {order.cost?.cutPlan && order.cost.cutPlan.length > 0 && (
-                                    <CutPlanBlock
-                                        cutPlan={order.cost.cutPlan}
-                                        constructions={orderConstruction ?? []}
-                                    />
-                                )}
-                            </div>
-
-                            <div className="flex-1 min-h-0 overflow-y-auto bg-react/600 rounded-xl shadow-sm">
-                                {isPendingOrderConstruction ? (
-                                    <div className="flex justify-center items-center h-full">
-                                        <Loading />
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="text-xs font-medium text-muted-foreground">Створено</span>
+                                            <p className={READONLY_FIELD}>{formatDateTime(order.createdAt)}</p>
+                                        </div>
                                     </div>
-                                ) : orderConstruction && orderConstruction.length > 0 ? (
-                                    <div className="divide-y divide-gray-100">
-                                        {orderConstruction.map((construction: IConstruction) => (
-                                            <div
-                                                key={construction.id}
-                                                className="border-b border-gray-100 last:border-b-0"
-                                            >
-                                                <button
-                                                    onClick={() => toggleConstructionDetails(construction.id)}
-                                                    className="w-full px-6 py-4 gap-2 hover:bg-gray-50 transition-colors duration-200 flex items-center justify-between"
-                                                >
-                                                    <div className="flex items-center gap-4 flex-1 min-w-0">
-                                                        <ChevronDown
-                                                            size={20}
-                                                            className={cn(
-                                                                "flex-shrink-0 transition-transform duration-200",
-                                                                expandedConstructionDetails.has(construction.id) ? "rotate-180" : ""
-                                                            )}
-                                                        />
-                                                        <div className="flex-1 min-w-0 text-left">
-                                                            <h3 className="text-sm font-bold text-gray-900 truncate">
-                                                                Конструкція {construction.constructionNo}
-                                                            </h3>
-                                                            <p className="text-xs text-gray-500 truncate">
-                                                                {construction.profileSystem.title} • {construction.width} × {construction.height} мм
-                                                            </p>
-                                                        </div>
-                                                    </div>
 
-                                                    {canSeeCost && (() => {
-                                                        const cost = getConstructionCost(construction.id);
-                                                        return cost ? (
-                                                            <div className="flex flex-col items-end gap-0.5 mx-4 flex-shrink-0">
-                                                                <span className="text-sm font-bold text-gray-900">
+                                    {/*
+                                      * «Редагувати» і «Видалити» стосуються самого
+                                      * замовлення, тож живуть тут, поруч з його полями,
+                                      * а не в ряду дій над конструкціями.
+                                      */}
+                                    <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-4 py-3">
+                                        {isLocked ? (
+                                            <p className="text-sm text-muted-foreground">
+                                                Замовлення в роботі: редагування й видалення закриті,
+                                                поки виробниче завдання не скасують
+                                            </p>
+                                        ) : (
+                                            <>
+                                                <Button onClick={handleEdit} color="grayGreen" className="w-auto mx-0 h-9">
+                                                    <Edit2 size={16} /> Редагувати
+                                                </Button>
+                                                <Button onClick={handleDelete} color="red" className="w-auto mx-0 h-9" disabled={isDeleting}>
+                                                    <Trash2 size={16} /> Видалити
+                                                </Button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/*
+                                  * Підсумок замовлення.
+                                  *
+                                  * Без нього вкладка складалася б із чотирьох полів і
+                                  * порожнечі, а числа, заради яких сюди й заходять,
+                                  * лежали б аж у «Вартості».
+                                  */}
+                                {canSeeCost && order.cost && (
+                                    <div className="overflow-hidden rounded-xl border border-border bg-card">
+                                        <SectionLabel>Підсумок</SectionLabel>
+
+                                        <div className="divide-y divide-border px-4 py-1">
+                                            <SummaryRow label="Конструкцій" value={`${constructions.length}`} />
+                                            {/*
+                                              * Прутки — те, що беремо зі складу; балки — те,
+                                              * за що платимо. Числа різні (пруток ріжуть не
+                                              * до кінця), тож показуємо обидва: інакше сума
+                                              * не сходиться з кількістю.
+                                              */}
+                                            {(() => {
+                                                const beams = order.cost.items.reduce(
+                                                    (s, i) => s + (i.beamLength > 0 ? i.totalLength / i.beamLength : 0),
+                                                    0,
+                                                );
+
+                                                /*
+                                                 * Дилеру — тільки те, за що він платить.
+                                                 *
+                                                 * Прутки — складський рух заводу, і поруч
+                                                 * із дробовим числом вони читались як
+                                                 * розбіжність у рахунку.
+                                                 */
+                                                if (isDealer) {
+                                                    return (
+                                                        <SummaryRow
+                                                            label="Профілів"
+                                                            value={`${beams.toFixed(3)} балок`}
+                                                        />
+                                                    );
+                                                }
+
+                                                return (
+                                                    <SummaryRow
+                                                        label="Профілів"
+                                                        value={`${order.cost.items.reduce((s, i) => s + i.beamsUsed, 0)} прутків`}
+                                                        hint={`${beams.toFixed(3)} балок за розрахунком`}
+                                                    />
+                                                );
+                                            })()}
+                                            <SummaryRow
+                                                label="Курс НБУ"
+                                                value={`1 $ = ${order.cost.currencyRate.toFixed(2)} ₴`}
+                                            />
+                                            {/* Головне число — останнім і крупнішим */}
+                                            <SummaryRow
+                                                label="Разом"
+                                                value={`${order.cost.totalUsd.toFixed(2)} $`}
+                                                hint={`${order.cost.totalUah.toFixed(0)} ₴`}
+                                                strong
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {activeSection === 'cost' && canSeeCost && order.cost && (
+                            <OrderCostBlock cost={order.cost} constructions={orderConstruction} />
+                        )}
+
+                        {activeSection === 'cut' && (
+                            <CutPlanBlock cutPlan={cutPlan} constructions={constructions} />
+                        )}
+
+                        {activeSection === 'constructions' && (
+                            <div className="flex flex-col gap-3">
+                                {/* Дії над конструкціями видно лише в цьому розділі */}
+                                <div className="flex flex-wrap justify-end gap-2">
+                                {!!constructions.length && !isDealer && (
+                                    <div className="relative">
+                                        {/* Сусіди в ряду — на кнопці з набору dashboard, тож і ця на ній */}
+                                        <UiButton
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => setIsDownloadMenuOpen(p => !p)}
+                                            disabled={isDownloading}
+                                        >
+                                            {/* Спінер підміняє іконку — ширина кнопки не змінюється */}
+                                            {isDownloading ? <Loader2 className="animate-spin" /> : <Download />}
+                                            {isDownloading ? 'Завантаження…' : 'Завантажити'}
+                                            <ChevronDown
+                                                className={cn('transition-transform duration-200', isDownloadMenuOpen && 'rotate-180')}
+                                            />
+                                        </UiButton>
+
+                                        {isDownloadMenuOpen && (
+                                            <>
+                                                {/* Перехоплює клік повз меню, щоб закрити його */}
+                                                <div className="fixed inset-0 z-[60]" onClick={() => setIsDownloadMenuOpen(false)} />
+
+                                                <div className="absolute right-0 top-11 z-[61] min-w-[240px] overflow-hidden rounded-md border border-input bg-popover p-1 text-popover-foreground shadow-lg">
+                                                    {downloadActions.map(action => (
+                                                        <button
+                                                            key={action.label}
+                                                            onClick={() => {
+                                                                setIsDownloadMenuOpen(false);
+                                                                action.onSelect();
+                                                            }}
+                                                            className="flex w-full items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+                                                        >
+                                                            <Download size={14} className="shrink-0 opacity-70" />
+                                                            {action.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/*
+                                  * Специфікація — єдине, що дилер вивантажує.
+                                  *
+                                  * Меню «Завантажити» для нього закрите: там
+                                  * G-code, розкрій і лейбли — файли для верстата
+                                  * й цеху. А специфікація описує сам виріб і
+                                  * його ціну, тобто саме те, з чим дилер іде до
+                                  * свого замовника. Окремою кнопкою, а не
+                                  * пунктом меню: пункт був би там один.
+                                  */}
+                                {!!constructions.length && isDealer && (
+                                    <UiButton
+                                        type="button"
+                                        variant="outline"
+                                        onClick={handleDownloadSpecification}
+                                    >
+                                        <Download /> Специфікація
+                                    </UiButton>
+                                )}
+
+                                {!isLocked && <RecalculateButton orderId={order.id} />}
+
+                                {!isLocked && (
+                                    <UiButton type="button" onClick={handleCreateConstruction}>
+                                        <PlusSvg width={16} height={16} /> Конструкція
+                                    </UiButton>
+                                )}
+                                </div>
+
+                                {isPendingOrderConstruction ? (
+                                    <div className="flex justify-center py-16"><Loading /></div>
+                                ) : constructions.length === 0 ? (
+                                    <div className="flex flex-col items-center gap-3 rounded-xl border border-border bg-card py-16">
+                                        <p className="text-sm text-muted-foreground">
+                                            У замовленні ще немає жодної конструкції
+                                        </p>
+                                        <Button color="greenDarkgreen" className="w-auto mx-0" onClick={handleCreateConstruction}>
+                                            <Plus size={16} /> Додати першу
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col gap-2">
+                                        {constructions.map((construction: IConstruction) => {
+                                            const isOpen = expandedConstructionDetails.has(construction.id);
+                                            const cost = canSeeCost ? getConstructionCost(construction.id) : null;
+
+                                            return (
+                                                <div
+                                                    key={construction.id}
+                                                    className="overflow-hidden rounded-xl border border-border bg-card"
+                                                >
+                                                    <div className="flex items-center gap-3 px-4 py-3">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => toggleConstructionDetails(construction.id)}
+                                                            className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                                                        >
+                                                            <ChevronDown
+                                                                size={18}
+                                                                className={cn(
+                                                                    'shrink-0 text-muted-foreground transition-transform duration-200',
+                                                                    isOpen && 'rotate-180',
+                                                                )}
+                                                            />
+
+                                                            <span className="min-w-0 flex-1">
+                                                                <span className="block truncate text-sm font-medium text-foreground">
+                                                                    Конструкція {construction.constructionNo}
+                                                                </span>
+                                                                <span className="block truncate text-xs text-muted-foreground">
+                                                                    {construction.profileSystem.title} · {construction.width} × {construction.height} мм
+                                                                </span>
+                                                            </span>
+                                                        </button>
+
+                                                        {cost && (
+                                                            <div className="hidden shrink-0 flex-col items-end sm:flex">
+                                                                <span className="text-sm font-medium tabular-nums text-foreground">
                                                                     {cost.subtotalUsd.toFixed(2)} $
                                                                 </span>
-                                                                <span className="text-xs text-gray-400">
+                                                                {/* Підсумок конструкції — округлений, як і решта підсумків */}
+                                                                <span className="text-xs tabular-nums text-muted-foreground">
                                                                     {cost.subtotalUah.toFixed(0)} ₴
                                                                 </span>
                                                             </div>
-                                                        ) : null;
-                                                    })()}
+                                                        )}
 
-                                                    <div className="flex flex-col items-center gap-3 ml-4">
-                                                        <div className="flex flex-row justify-between flex-row gap-2 items-center items-end">
-                                                            <span className="text-xs font-medium text-gray-500">Прогрес</span>
-                                                            <span className="text-sm font-bold text-gray-900">
-                                                                {construction.progress}%
-                                                            </span>
+                                                        <div className="hidden w-28 shrink-0 md:block">
+                                                            <div className="mb-1 flex items-center justify-between">
+                                                                <span className="text-xs text-muted-foreground">Прогрес</span>
+                                                                <span className="text-xs font-medium tabular-nums text-foreground">
+                                                                    {construction.progress}%
+                                                                </span>
+                                                            </div>
+                                                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                                                                <div
+                                                                    className={cn(
+                                                                        'h-1.5 rounded-full transition-all duration-300',
+                                                                        getProgressColor(Number(construction.progress)),
+                                                                    )}
+                                                                    style={{ width: `${Math.min(Number(construction.progress), 100)}%` }}
+                                                                />
+                                                            </div>
                                                         </div>
-                                                        <div className="w-24 h-2 bg-react/400 rounded-full overflow-hidden">
-                                                            <div
-                                                                className={cn(
-                                                                    "h-2 rounded-full transition-all duration-300",
-                                                                    getProgressColor(Number(construction.progress))
-                                                                )}
-                                                                style={{ width: `${Math.min(Number(construction.progress), 100)}%` }}
-                                                            />
-                                                        </div>
+
+                                                        {/* Чотири кнопки-іконки без підписів зайняли рядок
+                                                            і не пояснювали себе — тепер під трьома крапками */}
+                                                        <RowActionsCell
+                                                            onEdit={isLocked ? undefined : () => handleEditConstruction(construction)}
+                                                            onDelete={isLocked ? undefined : () => handleDeleteConstruction(construction.id)}
+                                                            extra={[
+                                                                {
+                                                                    label: 'Переглянути',
+                                                                    icon: <Eye className="h-4 w-4" />,
+                                                                    onSelect: () => handleViewConstruction(construction.id),
+                                                                },
+                                                                {
+                                                                    label: 'Копіювати',
+                                                                    icon: <Copy className="h-4 w-4" />,
+                                                                    onSelect: () => handleCopyConstruction(construction),
+                                                                },
+                                                            ]}
+                                                        />
                                                     </div>
 
-                                                    <div className="flex gap-2">
-                                                        <Button
-                                                            onClick={() => handleViewConstruction(construction.id)}
-                                                            color="blue"
-                                                            className="flex-1 !py-1 text-xs"
-                                                        >
-                                                            <Eye size={16} />
-                                                        </Button>
-                                                        <Button
-                                                            onClick={() => handleEditConstruction(construction)}
-                                                            color="greenDarkgreen"
-                                                            className="flex-1 !py-1 text-xs"
-                                                        >
-                                                            <Edit2 size={16} />
-                                                        </Button>
-                                                        <Button
-                                                            onClick={() => handleCopyConstruction(construction)}
-                                                            color="blue"
-                                                            className="flex-1 !py-1 text-xs"
-                                                        >
-                                                            <Copy size={16} />
-                                                        </Button>
-                                                        <ButtonDel
-                                                            onClick={() => handleDeleteConstruction(construction.id)}
-                                                            className="flex-1 !py-1 text-xs"
-                                                        >
-                                                        </ButtonDel>
-                                                    </div>
-                                                </button>
-
-                                                {expandedConstructionDetails.has(construction.id) && (
-                                                    <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
-                                                        {canSeeCost && (() => {
-                                                            const cost = getConstructionCost(construction.id);
-                                                            const isExpanded = expandedConstructionCost.has(construction.id);
-                                                            return cost ? (
-                                                                <div className="mb-4 bg-white border border-gray-200 rounded-lg overflow-hidden">
-
+                                                    {isOpen && (
+                                                        <div className="flex flex-col gap-4 border-t border-border p-4">
+                                                            {cost && (
+                                                                <div className="overflow-hidden rounded-lg border border-border">
+                                                                    {/* Підкладка виділяє заголовок так само, як підписи груп усередині */}
                                                                     <button
-                                                                        onClick={(e) => toggleConstructionCost(construction.id, e)}
-                                                                        className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+                                                                        onClick={e => toggleConstructionCost(construction.id, e)}
+                                                                        className="flex w-full items-center justify-between gap-3 bg-muted px-3 py-2.5 transition-colors hover:bg-secondary"
                                                                     >
-                                                                        <span className="text-sm font-bold text-gray-700">
+                                                                        <span className="text-sm font-medium text-foreground">
                                                                             Вартість конструкції
                                                                         </span>
-                                                                        <div className="flex items-center gap-3">
-                                                                            <span className="text-sm font-bold text-gray-900">
+                                                                        <span className="flex items-center gap-3">
+                                                                            <span className="whitespace-nowrap text-sm font-medium tabular-nums text-foreground">
                                                                                 {cost.subtotalUsd.toFixed(2)} $
+                                                                                <span className="text-muted-foreground"> / {cost.subtotalUah.toFixed(0)} ₴</span>
                                                                             </span>
                                                                             <ChevronDown
                                                                                 size={16}
                                                                                 className={cn(
-                                                                                    "text-gray-400 transition-transform duration-200",
-                                                                                    isExpanded ? "rotate-180" : ""
+                                                                                    'text-muted-foreground transition-transform duration-200',
+                                                                                    expandedConstructionCost.has(construction.id) && 'rotate-180',
                                                                                 )}
                                                                             />
-                                                                        </div>
+                                                                        </span>
                                                                     </button>
 
-                                                                    {isExpanded && (
-                                                                        <div className="px-4 pb-4 space-y-3 border-t border-gray-100">
+                                                                    {expandedConstructionCost.has(construction.id) && (
+                                                                        <div className="border-t border-border">
+                                                                            {COST_GROUPS.map(group => {
+                                                                                const items = cost[group.key] as Array<
+                                                                                    IOrderCostGlassItem | IOrderCostAccessoryItem | IOrderCostServiceItem
+                                                                                >;
+                                                                                if (!items.length) return null;
 
-                                                                            {cost.glassItems.length > 0 && (
-                                                                                <div className="pt-3">
-                                                                                    <p className="text-sm font-semibold text-purple-600 mb-1.5">Скло</p>
-                                                                                    {cost.glassItems.map((item: IOrderCostGlassItem) => (
-                                                                                        <div key={item.id} className="flex justify-between text-sm text-gray-600 py-0.5 gap-2">
-                                                                                            <span className="flex-1 min-w-0">{item.name}</span>
-                                                                                            <span className="flex-shrink-0 font-medium">{item.subtotalUsd.toFixed(2)} $</span>
+                                                                                return (
+                                                                                    <div key={group.key}>
+                                                                                        {/* Той самий підпис групи, що й у розділі «Вартість» */}
+                                                                                        <SectionLabel>{group.label}</SectionLabel>
+
+                                                                                        <div className="flex flex-col gap-0.5 px-3 py-2.5">
+                                                                                            {items.map(item => (
+                                                                                                <div key={item.id} className="flex justify-between gap-2 text-sm text-muted-foreground">
+                                                                                                    <span className="min-w-0 flex-1 truncate">
+                                                                                                        {item.name}
+                                                                                                        {'color' in item && item.color ? ` (${item.color})` : ''}
+                                                                                                        {'quantity' in item ? ` × ${item.quantity}` : ''}
+                                                                                                    </span>
+                                                                                                    {/*
+                                                                                                      * Гривня з копійками: рядки тут
+                                                                                                      * складають очима, і зрізані
+                                                                                                      * копійки не давали зійтися з
+                                                                                                      * підсумком
+                                                                                                      */}
+                                                                                                    <span className="shrink-0 whitespace-nowrap tabular-nums text-foreground">
+                                                                                                        {item.subtotalUsd.toFixed(2)} $
+                                                                                                        <span className="text-muted-foreground"> / {item.subtotalUah.toFixed(2)} ₴</span>
+                                                                                                    </span>
+                                                                                                </div>
+                                                                                            ))}
                                                                                         </div>
-                                                                                    ))}
-                                                                                </div>
-                                                                            )}
+                                                                                    </div>
+                                                                                );
+                                                                            })}
 
-                                                                            {cost.accessoryItems.length > 0 && (
-                                                                                <div>
-                                                                                    <p className="text-sm font-semibold text-blue-600 mb-1.5">Аксесуари</p>
-                                                                                    {cost.accessoryItems.map((item: IOrderCostAccessoryItem) => (
-                                                                                        <div key={item.id} className="flex justify-between text-sm text-gray-600 py-0.5 gap-2">
-                                                                                            <span className="flex-1 min-w-0">
-                                                                                                {item.name}
-                                                                                                {item.color && ` (${item.color})`}
-                                                                                                {' '}× {item.quantity}
-                                                                                            </span>
-                                                                                            <span className="flex-shrink-0 font-medium">{item.subtotalUsd.toFixed(2)} $</span>
-                                                                                        </div>
-                                                                                    ))}
-                                                                                </div>
-                                                                            )}
-
-                                                                            {cost.serviceItems.length > 0 && (
-                                                                                <div>
-                                                                                    <p className="text-sm font-semibold text-green-600 mb-1.5">Послуги</p>
-                                                                                    {cost.serviceItems.map((item: IOrderCostServiceItem) => (
-                                                                                        <div key={item.id} className="flex justify-between text-sm text-gray-600 py-0.5 gap-2">
-                                                                                            <span className="flex-1 min-w-0">{item.name}</span>
-                                                                                            <span className="flex-shrink-0 font-medium">{item.subtotalUsd.toFixed(2)} $</span>
-                                                                                        </div>
-                                                                                    ))}
-                                                                                </div>
-                                                                            )}
-
-                                                                            <div className="flex justify-between text-sm font-bold border-t border-gray-200 pt-2 gap-2">
+                                                                            <div className="flex justify-between gap-2 border-t border-border px-3 py-2.5 text-sm font-medium text-foreground">
                                                                                 <span>Підсумок (без профілю)</span>
-                                                                                <span className="flex-shrink-0">{cost.subtotalUsd.toFixed(2)} $</span>
+                                                                                <span className="shrink-0 whitespace-nowrap tabular-nums">
+                                                                                    {cost.subtotalUsd.toFixed(2)} $
+                                                                                    <span className="text-muted-foreground"> / {cost.subtotalUah.toFixed(0)} ₴</span>
+                                                                                </span>
                                                                             </div>
                                                                         </div>
                                                                     )}
                                                                 </div>
-                                                            ) : null;
-                                                        })()}
+                                                            )}
 
-                                                        <div className="grid grid-cols-2 gap-2 mb-2">
-                                                            {construction.hasHandle && (
-                                                                <div className="p-3 rounded-lg flex flex-row items-center gap-2 border border-blue-100 bg-blue-50">
-                                                                    <span className="text-xs text-blue-700 font-semibold">Ручка</span>
-                                                                    <div className="flex gap-4 text-xs text-gray-600">
-                                                                        <span>Сторона: {construction.handleSide}</span>
-                                                                        {construction.handleOffset && (
-                                                                            <span>Відступ: {construction.handleOffset} мм</span>
-                                                                        )}
-                                                                    </div>
+                                                            {(construction.hasHandle || construction.glassFill) && (
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    {construction.hasHandle && (
+                                                                        <span className="flex items-center gap-2 rounded-lg border border-border bg-accent/30 px-3 py-2 text-xs">
+                                                                            <span className="font-medium text-foreground">Ручка</span>
+                                                                            <span className="text-muted-foreground">
+                                                                                {construction.handleSide}
+                                                                                {construction.handleOffset ? ` · відступ ${construction.handleOffset} мм` : ''}
+                                                                            </span>
+                                                                        </span>
+                                                                    )}
+
+                                                                    {construction.glassFill && (
+                                                                        <span className="flex items-center gap-2 rounded-lg border border-border bg-accent/30 px-3 py-2 text-xs">
+                                                                            <span className="font-medium text-foreground">Скло</span>
+                                                                            <span className="text-muted-foreground">
+                                                                                {construction.glassFill.type} · {construction.glassFill.thickness} мм
+                                                                            </span>
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                             )}
 
-                                                            {construction.glassFill && (
-                                                                <div className="p-3 bg-purple-50 rounded-lg flex flex-row items-center gap-2 border border-purple-100">
-                                                                    <span className="text-xs text-purple-700 font-semibold">Скло</span>
-                                                                    <p className="text-sm font-semibold text-gray-900">
-                                                                        {construction.glassFill.type} ({construction.glassFill.thickness} мм)
-                                                                    </p>
-                                                                </div>
+                                                            {!isDealer && (
+                                                                <ConstructionDetailsView
+                                                                    constructionId={construction.id}
+                                                                    className="overflow-hidden rounded-lg border border-border"
+                                                                    onDetailClick={detailId => handleDetailClick(construction.id, detailId)}
+                                                                />
                                                             )}
                                                         </div>
-
-                                                        <div className="mb-4 pt-3">
-                                                            <div className="text-xs font-semibold text-gray-700 mb-3">
-                                                                Деталі
-                                                            </div>
-                                                            <ConstructionDetailsView
-                                                                constructionId={construction.id}
-                                                                className="bg-white rounded-lg p-3 border border-gray-200"
-                                                                onDetailClick={(detailId) => handleDetailClick(construction.id, detailId)}
-                                                            />
-                                                        </div>
-
-                                                        <div className="flex gap-2 pt-3 border-t border-gray-200">
-                                                            <Button
-                                                                onClick={() => handleViewConstruction(construction.id)}
-                                                                color="blue"
-                                                                className="flex-1 !py-1.5 text-xs"
-                                                            >
-                                                                <Eye size={16} /> Переглянути
-                                                            </Button>
-                                                            <Button
-                                                                onClick={() => handleEditConstruction(construction)}
-                                                                color="greenDarkgreen"
-                                                                className="flex-1 !py-1.5 text-xs"
-                                                            >
-                                                                <Edit2 size={16} /> Редагувати
-                                                            </Button>
-                                                            <Button
-                                                                onClick={() => handleCopyConstruction(construction)}
-                                                                color="blue"
-                                                                className="flex-1 !py-1.5 text-xs"
-                                                            >
-                                                                <Copy size={16} /> Копіювати
-                                                            </Button>
-                                                            <ButtonDel
-                                                                onClick={() => handleDeleteConstruction(construction.id)}
-                                                                title={'Видалити'}
-                                                                className="flex-1 !py-1.5 text-xs"
-                                                            >
-                                                            </ButtonDel>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center justify-center h-full">
-                                        <div className="text-center">
-                                            <p className="text-gray-500 mb-4">Конструкцій ще немає</p>
-                                            <Button
-                                                color="greenDarkgreen"
-                                                onClick={handleCreateConstruction}
-                                            >
-                                                <Plus size={16} /> Додати першу конструкцію
-                                            </Button>
-                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
-                        </div>
+                        )}
                     </div>
                 </div>
             </div>

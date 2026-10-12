@@ -12,7 +12,12 @@ export const useAuthViaTokenMutation = () => {
 				(data) => data.data.data as ILogin
 			),
 		onSuccess: (data) => {
-			setTokens(data.accessToken, data.refreshToken, data.user.roles.name);
+			// Ім'я і пошта вже приходять у відповіді — раніше вони просто губились
+			setTokens(data.accessToken, data.refreshToken, {
+				role: data.user.roles.name,
+				name: data.user.name,
+				email: data.user.email,
+			});
 		},
 		onError: () => {
 			clearTokens();

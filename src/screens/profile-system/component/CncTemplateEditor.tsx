@@ -1,4 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Loader2 } from "lucide-react";
+
+import { Button } from "@/ui/shadcn/button";
 import { ICncProgramTemplate } from "@/screens/profile-system/types/cnc/ICncProgramTemplate";
 
 export interface CncTemplateEditorProps {
@@ -9,10 +12,20 @@ export interface CncTemplateEditorProps {
 
 const PLACEHOLDER_RE = /(\{\{[^}]+\}\})/g;
 
+/**
+ * Колір підстановок — той самий, що токен `chart-2` у tailwind.config.
+ *
+ * Тут він літералом, бо клас Tailwind до вмісту `contenteditable` не
+ * застосуєш: розмітку всередині збирає `textToHtml` рядком, і Tailwind її
+ * не бачить під час збірки. CSS-змінних тема не експонує.
+ */
+const TOKEN_COLOR = '#00BC7D';
+
 function parseSegments(raw: string): Array<{ type: "text" | "token"; value: string }> {
-    const parts = raw.split(PLACEHOLDER_RE);
-    return parts.map(p => ({
-        type: PLACEHOLDER_RE.test(p) ? "token" : "text",
+    // split зі захопленням лишає роздільники в масиві — так текст і підстановки
+    // йдуть у тому ж порядку, що в програмі
+    return raw.split(PLACEHOLDER_RE).map(p => ({
+        type: /^\{\{[^}]+\}\}$/.test(p) ? "token" : "text",
         value: p,
     }));
 }
@@ -39,7 +52,7 @@ function textToHtml(raw: string): string {
     return parseSegments(raw)
         .map(seg => {
             if (seg.type === "token") {
-                const inner = seg.value.slice(2, -2); // strip {{ }}
+                const inner = seg.value.slice(2, -2); // прибираємо {{ }}
                 return `<span contenteditable="false" data-token="${seg.value}" class="cnc-token">${inner}</span>`;
             }
             return seg.value
@@ -51,28 +64,45 @@ function textToHtml(raw: string): string {
         .join("");
 }
 
+/**
+ * Редактор програми CNC.
+ *
+ * Поле редагування відкрите одразу. Раніше спершу показувався той самий текст
+ * у режимі «тільки читання», і щоб щось змінити, треба було ще натиснути
+ * «Редагувати» — два кроки й два однакові на вигляд екрани заради одного.
+ *
+ * Кнопка збереження при цьому лишилася явною, на відміну від решти полів
+ * сторінки: це керуюча програма верстата, і відправляти її на сервер на кожен
+ * натиск клавіші — не те саме, що зберегти зміщення отвору.
+ */
 const CncTemplateEditor: React.FC<CncTemplateEditorProps> = ({ template, onSave, pending }) => {
-    const [editingContent, setEditingContent] = useState(false);
-
+    const [isDirty, setIsDirty] = useState(false);
     const editorRef = useRef<HTMLDivElement>(null);
 
+    /*
+     * Розмітку кладемо руками, а не через JSX.
+     *
+     * Вміст `contenteditable` React перемальовувати не може: він не знає про
+     * правки користувача й на кожному рендері затирав би набране. Тому
+     * записуємо innerHTML один раз на кожну нову версію з сервера.
+     */
     useEffect(() => {
-        if (editingContent && editorRef.current) {
-            editorRef.current.innerHTML = textToHtml(template.templateContent);
-            const range = document.createRange();
-            range.selectNodeContents(editorRef.current);
-            range.collapse(false);
-            const sel = window.getSelection();
-            sel?.removeAllRanges();
-            sel?.addRange(range);
-        }
-    }, [editingContent, template.templateContent]);
+        if (!editorRef.current) return;
+        editorRef.current.innerHTML = textToHtml(template.templateContent);
+        setIsDirty(false);
+    }, [template.templateContent]);
 
-    const handleSaveContent = useCallback(() => {
+    const handleSave = useCallback(() => {
         if (!editorRef.current) return;
         onSave(template.id, { templateContent: domToText(editorRef.current) });
-        setEditingContent(false);
+        setIsDirty(false);
     }, [onSave, template.id]);
+
+    const handleReset = useCallback(() => {
+        if (!editorRef.current) return;
+        editorRef.current.innerHTML = textToHtml(template.templateContent);
+        setIsDirty(false);
+    }, [template.templateContent]);
 
     const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
         e.preventDefault();
@@ -83,11 +113,12 @@ const CncTemplateEditor: React.FC<CncTemplateEditorProps> = ({ template, onSave,
     const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
         const sel = window.getSelection();
         if (!sel || sel.rangeCount === 0) return;
+
         const node = sel.getRangeAt(0).startContainer;
         const parent = node instanceof HTMLElement ? node : node.parentElement;
-        if (parent?.dataset.token) {
-            e.preventDefault();
-        }
+
+        // Підстановку не можна правити руками — її значення підставляє генератор
+        if (parent?.dataset.token) e.preventDefault();
     };
 
     return (
@@ -98,104 +129,69 @@ const CncTemplateEditor: React.FC<CncTemplateEditorProps> = ({ template, onSave,
                     font-family: ui-monospace, monospace;
                     font-size: 0.7rem;
                     line-height: 1.4;
-                    background: #166534;
-                    color: #bbf7d0;
-                    border: 1px solid #15803d;
+                    background: ${TOKEN_COLOR}26;
+                    color: ${TOKEN_COLOR};
+                    border: 1px solid ${TOKEN_COLOR}66;
                     border-radius: 4px;
                     padding: 0 5px;
                     margin: 0 1px;
                     cursor: not-allowed;
                     user-select: none;
                 }
-                .cnc-editor {
+                .cnc-surface {
                     font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
                     font-size: 0.72rem;
                     line-height: 1.7;
-                    background: #030712;
-                    color: #4ade80;
-                    border: 1px solid #374151;
-                    border-radius: 6px;
-                    padding: 10px 12px;
-                    min-height: 280px;
-                    max-height: 480px;
-                    overflow-y: auto;
-                    outline: none;
                     white-space: pre-wrap;
                     word-break: break-all;
                 }
-                .cnc-editor:focus {
-                    border-color: #16a34a;
-                    box-shadow: 0 0 0 2px rgba(22,163,74,0.25);
-                }
             `}</style>
 
-            <div className="space-y-3">
-                <div className="flex flex-row items-center gap-2">
-                    <span className="text-xs text-gray-400 uppercase">Назва шаблону</span>
-                    <span className="text-sm font-mono font-medium">
-                        {template.name ?? <span className="text-gray-400 italic">Без назви</span>}
-                    </span>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                    <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-400 uppercase">CNC Програма</span>
-                        {!editingContent && (
-                            <button
-                                onClick={() => setEditingContent(true)}
-                                className="text-xs text-green-600 hover:text-green-700 underline"
-                            >
-                                Редагувати
-                            </button>
-                        )}
+            <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                            Назва
+                        </span>
+                        <span className="truncate font-mono text-sm text-foreground">
+                            {template.name ?? <span className="italic text-muted-foreground">без назви</span>}
+                        </span>
                     </div>
 
-                    {editingContent ? (
-                        <div className="flex flex-col gap-2">
-                            <p className="text-xs text-gray-400">
-                                Елементи{" "}
-                                <span className="cnc-token" style={{ cursor: "default" }}>змінна</span>
-                                {" "}є динамічною — їх не можна редагувати вручну.
-                            </p>
-                            <div
-                                ref={editorRef}
-                                contentEditable
-                                suppressContentEditableWarning
-                                spellCheck={false}
-                                className="cnc-editor"
-                                onPaste={handlePaste}
-                                onKeyDown={handleKeyDown}
-                            />
-                            <div className="flex gap-2">
-                                <button
-                                    disabled={pending}
-                                    onClick={handleSaveContent}
-                                    className="text-xs px-3 py-1.5 bg-emerald/500 font-bold text-white rounded hover:bg-emerald/600 disabled:opacity-50"
-                                >
-                                    Зберегти
-                                </button>
-                                <button
-                                    onClick={() => setEditingContent(false)}
-                                    className="text-xs px-3 py-1.5 bg-red/600 font-bold rounded hover:bg-red/500"
-                                >
-                                    Скасувати
-                                </button>
-                            </div>
-                        </div>
-                    ) : (
-                        <pre className="font-mono text-xs bg-gray-950 text-green-400 rounded p-3 overflow-x-auto max-h-48 border border-gray-700 whitespace-pre-wrap">
-                            {parseSegments(template.templateContent).map((seg, i) =>
-                                seg.type === "token" ? (
-                                    <span key={i} className="cnc-token" style={{ cursor: "default" }}>
-                                        {seg.value.slice(2, -2)}
-                                    </span>
-                                ) : (
-                                    <React.Fragment key={i}>{seg.value}</React.Fragment>
-                                )
-                            )}
-                        </pre>
-                    )}
+                    <p className="text-xs text-muted-foreground">
+                        Виділені <span className="cnc-token" style={{ cursor: "default" }}>змінні</span>{" "}
+                        підставляє генератор
+                    </p>
                 </div>
+
+                <div
+                    ref={editorRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    spellCheck={false}
+                    onInput={() => setIsDirty(true)}
+                    onPaste={handlePaste}
+                    onKeyDown={handleKeyDown}
+                    className={[
+                        'cnc-surface max-h-[480px] min-h-[280px] overflow-y-auto rounded-md',
+                        'border border-input bg-background p-3 text-foreground outline-none',
+                        'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                    ].join(' ')}
+                />
+
+                {/* Кнопки з'являються, тільки коли є що зберігати */}
+                {isDirty && (
+                    <div className="flex gap-2">
+                        <Button type="button" onClick={handleSave} disabled={pending} className="w-[140px]">
+                            {pending ? (
+                                <><Loader2 size={14} className="animate-spin" /> Зберігаємо…</>
+                            ) : 'Зберегти'}
+                        </Button>
+                        <Button type="button" variant="secondary" onClick={handleReset} disabled={pending}>
+                            Скасувати зміни
+                        </Button>
+                    </div>
+                )}
             </div>
         </>
     );

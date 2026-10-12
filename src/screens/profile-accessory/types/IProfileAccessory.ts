@@ -25,6 +25,8 @@ export interface IProfileAccessory {
     articleCode: string;
     name: string;
     unit: AccessoryUnitType;
+    /** Код номенклатури в 1С. Рядок із ведучими нулями. */
+    code1C: string | null;
     colorId: number | null;
     color: { id: number; name: string; code: string | null } | null;
     prices: IProfileAccessoryPrice[];

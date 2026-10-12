@@ -6,8 +6,8 @@ import {ICurrencyRate} from "@/screens/currency-rate/type/ICurrencyRate";
 
 export const useCurrencyRateQuery = () => {
     const useFilter = () => {
-        const { page, limit } = useCurrencyRateFilterStore();
-        return { page, limit };
+        const { page, limit, sortBy, sortOrder } = useCurrencyRateFilterStore();
+        return { page, limit, sortBy, sortOrder };
     };
     const filterParams = useFilter();
     return useQuery({

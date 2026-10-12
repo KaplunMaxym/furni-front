@@ -1,3 +1,4 @@
+import MainLayout from "@/ui/layouts/main-layout/MainLatout";
 import useModal from "@/hooks/useModal";
 import React, { useState } from "react";
 import Button from "@/ui/button/Button";
@@ -6,8 +7,6 @@ import { Table } from "@/ui/table/table";
 import { TrHead } from "@/ui/table/tr-head";
 import { TrBody } from "@/ui/table/tr-body";
 import { cn } from "@/helpers/cn";
-import { EditSvg, refreshIcon } from "@/assets";
-import ButtonDel from "@/ui/button/ButtonDel";
 import SelectorSearch from "@/componets/select/virtualized-list/SelectorSearch";
 import PaginationControl from "@/componets/pagination/Pagination";
 import ConstructionCreateModal from "@/screens/construction/features/modals/modal-create-update-construction/ modal-create-сonstruction";
@@ -16,21 +15,37 @@ import {IConstruction} from "@/screens/construction/type/construction/IConstruct
 import {useConstructionQuery} from "@/screens/construction/hooks/construction/useConstructionQuery";
 import {useConstructionFilterStore} from "@/store/construction/construction-fiter/useConstructionFilter";
 import {formatDateTime} from "@/utils/time/formatDateTime";
-import ToggleConstruction from "@/screens/construction/shared/toggle-construction";
 import {useConstructionStatus} from "@/screens/construction/hooks/construction-status/useConstructionStatus";
 import {useConstructionUpdateMutation} from "@/screens/construction/hooks/construction/useConstructionUpdateMutation";
 import {Eye} from "lucide-react";
 import {useNavigate} from "react-router";
-import Input from "@/ui/input/Input";
-import {useForm} from "react-hook-form";
-import {IConstructionFilterForm} from "@/screens/construction/type/construction/IConstructionFilterForm";
+import RowActionsCell from '@/ui/table/RowActionsCell';
+import FiltersBar from '@/ui/filters/FiltersBar';
+import TableStateRows from '@/ui/table/TableStateRows';
+import {useProfileSystem} from "@/screens/profile-system/hooks/useProfileSystem";
+import PageHeader from "@/ui/page-header/PageHeader";
+import SortableTh from '@/ui/table/SortableTh';
+import { DateRangeField } from '@/componets/date-picker/DatePicker';
+import {useAuthStore} from "@/store/auth/authReducer";
+import {isDealerRole} from "@/config/RoleEnum";
+
+/** Скільки колонок у таблиці — для colSpan службових рядків. */
+const COLUMN_COUNT = 9;
 
 const Construction = () => {
-    const {control} = useForm<IConstructionFilterForm>()
     const navigate = useNavigate();
 
-    const { data: dataConstruction, isPending: isPendingConstruction } = useConstructionQuery();
+    // Для дилера список звужений до його замовлень — це видно в підписах
+    const { role } = useAuthStore();
+    const isDealer = isDealerRole(role);
+
+    const {
+        data: dataConstruction,
+        isPending: isPendingConstruction,
+        isFetching,
+    } = useConstructionQuery();
     const { data: dataConstructionStatus, isPending: isPendingConstructionStatus } = useConstructionStatus();
+    const { data: dataProfileSystem } = useProfileSystem();
 
     const { mutateAsync: mutateAsyncConstructionDel } = useConstructionDelMutation();
     const { mutateAsync: mutateAsyncUpdateConstruction } = useConstructionUpdateMutation();
@@ -38,10 +53,13 @@ const Construction = () => {
     const {
         page, setPage,
         limit, setLimit,
+        search, setSearch,
         status, setStatus,
-        orderNumber, setOrderNumber,
-        constructionNo, setConstructionNumber
-    } = useConstructionFilterStore();
+        profileSystemId, setProfileSystemId,
+        dateFrom, setDateFrom, dateTo, setDateTo,
+        resetFilters, sortBy, sortOrder, setSort} = useConstructionFilterStore();
+
+    const hasFilters = !!search || !!status || !!profileSystemId || !!dateFrom || !!dateTo;
 
     const modalCreateUser = useModal();
 
@@ -55,7 +73,7 @@ const Construction = () => {
         limit: 20,
     };
 
-    const { totalPages, currentPage } = meta;
+    const { totalItems, totalPages, currentPage } = meta;
 
     const onView = (construction: IConstruction) => {
         navigate(`/construction-editor?id=${construction.id}&orderId=${construction.orderId}`);
@@ -91,83 +109,102 @@ const Construction = () => {
     };
 
     return (
-        <>
+        <MainLayout>
             <div className={"flex flex-col gap-3 w-full"}>
-                <div className={"flex gap-4 justify-between items-end"}>
-                    <div className={"flex items-center flex-row gap-4"}>
-                        <ToggleConstruction />
+                <PageHeader
+                    title="Конструкції"
+                    // «Всіх замовлень» — неправда для дилера: список звужений до його власних
+                    description={isDealer
+                        ? 'Вироби ваших замовлень: розміри, профільна система, стан виготовлення'
+                        : 'Вироби всіх замовлень: розміри, профільна система, стан виготовлення'}
+                />
 
+                <FiltersBar
+                    search={search}
+                    onSearchChange={setSearch}
+                    searchPlaceholder="Номер замовлення або конструкції"
+                    hasFilters={hasFilters}
+                    onReset={resetFilters}
+                    action={
+                        <Button
+                            className={"w-auto mx-0 py-0 h-[40px]"}
+                            color={"greenDarkgreen"}
+                            onClick={() => {
+                                modalCreateUser.onOpen();
+                            }}
+                        >
+                            <PlusSvg width={20} height={20} /> Додати конструкцію
+                        </Button>
+                    }
+                >
+                    {!isPendingConstructionStatus && formattedConstructionStatusOptions.length > 0 && (
                         <SelectorSearch
-                            getAndSet={[limit, setLimit]}
-                            searchable={false}
-                            className={'w-[80px]'}
-                            options={[20, 40, 60, 80]}
+                            getAndSet={[status, (value: string) => setStatus(value || '')]}
+                            className={'w-[220px]'}
+                            options={formattedConstructionStatusOptions}
+                            allowClear={true}
+                            placeholder={'Всі статуси'}
+                            optionValue="value"
+                            optionLabel="label"
+                            searchable={true}
                         />
+                    )}
 
-                        <Input
-                            placeholder={'Номер замовлення'}
-                            control={control}
-                            name={'orderNumber'}
-                            value={orderNumber}
-                            className={'w-[180px]'}
-                            onChange={(e) => setOrderNumber(e.target.value)}
-                        />
+                    <SelectorSearch
+                        getAndSet={[profileSystemId, (value: string) => setProfileSystemId(value || '')]}
+                        className={'w-[220px]'}
+                        options={dataProfileSystem}
+                        allowClear={true}
+                        placeholder={'Усі профільні системи'}
+                        optionValue="id"
+                        optionLabel="title"
+                    />
 
-                        <Input
-                            placeholder={'Номер конструкції'}
-                            control={control}
-                            name={'constructionNo'}
-                            value={constructionNo}
-                            className={'w-[180px]'}
-                            onChange={(e) => setConstructionNumber(e.target.value)}
-                        />
-
-                        {!isPendingConstructionStatus && formattedConstructionStatusOptions.length > 0 && (
-                            <SelectorSearch
-                                getAndSet={[status, (value: string) => setStatus(value || '')]}
-                                className={'w-[240px]'}
-                                options={formattedConstructionStatusOptions}
-                                allowClear={true}
-                                placeholder={'Всі статуси'}
-                                optionValue="value"
-                                optionLabel="label"
-                                searchable={true}
-                            />
-                        )}
-                    </div>
-                    <Button
-                        className={"w-auto mx-0 py-0 h-[40px]"}
-                        color={"greenDarkgreen"}
-                        onClick={() => {
-                            modalCreateUser.onOpen();
+                    {/* Період створення — один вибір на обидві межі */}
+                    <DateRangeField
+                        from={dateFrom}
+                        to={dateTo}
+                        onChange={(from, to) => {
+                            setDateFrom(from);
+                            setDateTo(to);
                         }}
-                    >
-                        <PlusSvg width={20} height={20} /> Додати конструкцію
-                    </Button>
-                </div>
+                        placeholder="Період створення"
+                        className="w-[280px]"
+                    />
+                </FiltersBar>
 
                 <div className="flex items-center flex-col justify-center gap-5 overflow-hidden">
-                    <div className={"overflow-x-auto w-full"}>
+                    {/* Під час підвантаження показуємо старі рядки приглушено */}
+                    <div
+                        className={cn(
+                            "w-full transition-opacity",
+                            isFetching && !isPendingConstruction && "opacity-60",
+                        )}
+                    >
                         <Table>
                             <thead>
                             <TrHead>
-                                <th>Номер замовлення</th>
-                                <th>Номер конструкції</th>
+                                <SortableTh field="orderNumber" sortBy={sortBy} sortOrder={sortOrder} onSort={setSort}>Номер замовлення</SortableTh>
+                                <SortableTh field="constructionNo" sortBy={sortBy} sortOrder={sortOrder} onSort={setSort}>Номер конструкції</SortableTh>
                                 <th>Статус</th>
-                                <th>Ширина</th>
-                                <th>Висота</th>
-                                <th>Профільна система</th>
-                                <th>Прогрес</th>
-                                <th>Створено</th>
+                                <SortableTh field="width" sortBy={sortBy} sortOrder={sortOrder} onSort={setSort}>Ширина</SortableTh>
+                                <SortableTh field="height" sortBy={sortBy} sortOrder={sortOrder} onSort={setSort}>Висота</SortableTh>
+                                <SortableTh field="profileSystem" sortBy={sortBy} sortOrder={sortOrder} onSort={setSort}>Профільна система</SortableTh>
+                                <SortableTh field="progress" sortBy={sortBy} sortOrder={sortOrder} onSort={setSort}>Прогрес</SortableTh>
+                                <SortableTh field="createdAt" sortBy={sortBy} sortOrder={sortOrder} onSort={setSort}>Створено</SortableTh>
                                 <th className={"w-[180px]"}></th>
                             </TrHead>
                             </thead>
                             <tbody>
                             {dataConstruction?.construction.map((item) => (
-                                <TrBody key={item.id}>
+                                <TrBody
+                                    key={item.id}
+                                    onClick={() => onView(item)}
+                                    className="cursor-pointer"
+                                >
                                     <td>{item.order.orderNumber}</td>
                                     <td>{item.constructionNo}</td>
-                                    <td className={'!max-w-[150px] !p-0'}>
+                                    <td className={'!max-w-[150px]'}>
                                         {!isPendingConstructionStatus ? (
                                             <SelectorSearch
                                                 getAndSet={[
@@ -206,7 +243,7 @@ const Construction = () => {
                                                 searchable={true}
                                             />
                                         ) : (
-                                            <span className="text-gray-400">Завантаження...</span>
+                                            <span className="text-muted-foreground">Завантаження...</span>
                                         )}
                                     </td>
                                     <td>{item.width}</td>
@@ -214,8 +251,8 @@ const Construction = () => {
                                     <td>{item.profileSystem.title}</td>
                                     <td>
                                         <div className="flex justify-between items-center mb-1.5">
-                                            <span className="text-xs text-gray-500 font-medium">Прогрес</span>
-                                            <span className="text-xs font-bold text-gray-900">
+                                            <span className="text-xs text-muted-foreground font-medium">Прогрес</span>
+                                            <span className="text-xs font-bold text-foreground">
                                                             {item.progress}%
                                                         </span>
                                         </div>
@@ -230,51 +267,27 @@ const Construction = () => {
                                         </div>
                                     </td>
                                     <td>{formatDateTime(item.createdAt)}</td>
-                                    <td className={"!p-0 flex flex-row g-2"}>
-                                        <Button
-                                            className={"min-h-[36px] w-fit"}
-                                            color="blue"
-                                            onClick={() => onView(item)}
-                                            title="Переглянути деталі конструкції"
-                                        >
-                                            <Eye size={16} />
-                                        </Button>
-
-                                        <Button
-                                            className={"min-h-[36px] w-fit"}
-                                            color="greenDarkgreen"
-                                            onClick={() => onEdit(item)}
-                                        >
-                                            <img
-                                                src={EditSvg}
-                                                alt={"редагувати"}
-                                                className="w-4 h-4"
-                                            />
-                                        </Button>
-
-                                        <ButtonDel
-                                            onClick={() => onDelete(item.id, item.orderId)}
-                                            className={"min-h-[36px]"}
+                                    <td className="w-[60px]">
+                                        <RowActionsCell
+                                            onEdit={() => onEdit(item)}
+                                            onDelete={() => onDelete(item.id, item.orderId)}
+                                            extra={[{
+                                                label: 'Переглянути',
+                                                icon: <Eye className="h-4 w-4" />,
+                                                onSelect: () => onView(item),
+                                            }]}
                                         />
                                     </td>
                                 </TrBody>
                             ))}
-                            {isPendingConstruction && (
-                                <TrBody>
-                                    <td colSpan={5}>
-                                        <div
-                                            className={cn(
-                                                "w-full h-6 animate-spin flex justify-center"
-                                            )}
-                                        >
-                                            <img
-                                                src={refreshIcon}
-                                                alt={"оновлення"}
-                                            />
-                                        </div>
-                                    </td>
-                                </TrBody>
-                            )}
+                            <TableStateRows
+                                columnCount={COLUMN_COUNT}
+                                isPending={isPendingConstruction}
+                                isEmpty={dataConstruction?.construction.length === 0}
+                                hasFilters={hasFilters}
+                                onReset={resetFilters}
+                                emptyLabel="Конструкцій ще немає"
+                            />
                             </tbody>
                         </Table>
                     </div>
@@ -284,6 +297,9 @@ const Construction = () => {
                     currentPage={currentPage}
                     totalPages={totalPages}
                     onPageChange={setPage}
+                    totalItems={totalItems}
+                    limit={limit}
+                    onLimitChange={setLimit}
                     disabled={isPendingConstruction}
                 />
             </div>
@@ -293,7 +309,7 @@ const Construction = () => {
                 construction={selectedConstruction}
                 onClose={handleModalClose}
             />
-        </>
+        </MainLayout>
     );
 };
 

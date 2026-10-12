@@ -23,12 +23,22 @@ type Props = ModalProps & {
 };
 
 const ProfileAccessoryCreateModal: FC<Props> = ({ profileAccessory, ...props }) => {
-    const isEditMode = !!profileAccessory;
+    /*
+     * Копія приходить тим самим шляхом, що й редагування, але з `id: 0`.
+     *
+     * Це відрізняє «відкрили наявний запис» від «відкрили заповнену форму для
+     * нового»: поля ті самі, а зберігається створенням, а не оновленням.
+     * Перевіряти саму наявність об'єкта не можна — копія тоді перезаписала б
+     * оригінал.
+     */
+    const isEditMode = !!profileAccessory && profileAccessory.id > 0;
 
-    const { control, handleSubmit, reset, setValue, watch, register, formState: { errors }, clearErrors } =
+    const { control, handleSubmit, trigger, reset, setValue, watch, register, formState: { errors, isValid }, clearErrors } =
         useForm<IProfileAccessoryForm>({
+            mode: 'onChange',
             defaultValues: {
                 articleCode: '',
+                code1C: '',
                 name: '',
                 unit: '',
                 colorId: '',
@@ -50,6 +60,7 @@ const ProfileAccessoryCreateModal: FC<Props> = ({ profileAccessory, ...props }) 
     useEffect(() => {
         if (profileAccessory && props.open) {
             setValue('articleCode', profileAccessory.articleCode);
+            setValue('code1C', profileAccessory.code1C ?? '');
             setValue('name', profileAccessory.name);
             setValue('unit', profileAccessory.unit);
             setValue('colorId', profileAccessory.colorId ?? '');
@@ -62,9 +73,29 @@ const ProfileAccessoryCreateModal: FC<Props> = ({ profileAccessory, ...props }) 
         if (!props.open) reset();
     }, [props.open, reset]);
 
+    /*
+     * Колір необовʼязковий.
+     *
+     * Кутики, гвинти й шурупи заведені без кольору взагалі — у базі це `null`,
+     * і саме за цим розрахунок вартості впізнає позицію, яка йде в будь-яку
+     * конструкцію. Вимога заповнити колір змушувала вигадувати його там, де
+     * його немає, і така позиція переставала підходити під будь-який виріб.
+     */
     useEffect(() => {
-        register('colorId', { required: 'Колір обов\'язковий' });
+        register('colorId');
     }, [register]);
+
+    /**
+     * Кнопка збереження вимкнена, поки форма невалідна.
+     *
+     * У режимі редагування значення підставляються через `setValue`, а він не
+     * перераховує `isValid` — без явного `trigger` кнопка лишалась би сірою на
+     * вже заповненій формі. У режимі створення `trigger` не викликаємо: він би
+     * одразу підсвітив червоним усі порожні обов'язкові поля.
+     */
+    useEffect(() => {
+        if (props.open && isEditMode) void trigger();
+    }, [props.open, isEditMode, trigger]);
 
     const onSubmit = async (data: IProfileAccessoryForm) => {
         try {
@@ -86,18 +117,18 @@ const ProfileAccessoryCreateModal: FC<Props> = ({ profileAccessory, ...props }) 
         <Modal
             {...props}
             className={cn(
-                'flex flex-col gap-2.5 max-w-[500px] min-h-10 rounded-base-mini mx-2 overflow-y-auto max-h-dvh h-auto',
+                'max-w-[500px]',
             )}
         >
             <Modal.Title className="gap-2" onClose={props.onClose}>
                 {isEditMode ? 'Редагувати аксесуар' : 'Створити аксесуар'}
             </Modal.Title>
 
-            <Modal.Body className="flex flex-col gap-4 rounded-xl p-3">
+            <Modal.Body className="flex flex-col gap-4">
                 <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
 
                     <div className="relative flex flex-col gap-[5px] h-fit">
-                        <p className="text-xs font-semibold pl-4">Артикул *</p>
+                        <p className="text-xs font-semibold pl-4">Артикул</p>
                         <Input
                             control={control}
                             name="articleCode"
@@ -106,12 +137,12 @@ const ProfileAccessoryCreateModal: FC<Props> = ({ profileAccessory, ...props }) 
                             rules={{ required: 'Артикул обов\'язковий' }}
                         />
                         {errors.articleCode && (
-                            <p className="text-red-500 text-sm">{errors.articleCode.message}</p>
+                            <p className="text-destructive-foreground text-sm">{errors.articleCode.message}</p>
                         )}
                     </div>
 
                     <div className="relative flex flex-col gap-[5px] h-fit">
-                        <p className="text-xs font-semibold pl-4">Назва *</p>
+                        <p className="text-xs font-semibold pl-4">Назва</p>
                         <Input
                             control={control}
                             name="name"
@@ -120,12 +151,22 @@ const ProfileAccessoryCreateModal: FC<Props> = ({ profileAccessory, ...props }) 
                             rules={{ required: 'Назва обов\'язкова' }}
                         />
                         {errors.name && (
-                            <p className="text-red-500 text-sm">{errors.name.message}</p>
+                            <p className="text-destructive-foreground text-sm">{errors.name.message}</p>
                         )}
                     </div>
 
                     <div className="relative flex flex-col gap-[5px] h-fit">
-                        <p className="text-xs font-semibold pl-4">Колір профілю *</p>
+                        <p className="text-xs font-semibold pl-4">Код 1С</p>
+                        <Input
+                            control={control}
+                            name="code1C"
+                            placeholder="Напр. 000045212"
+                            classNameContainer="w-full"
+                        />
+                    </div>
+
+                    <div className="relative flex flex-col gap-[5px] h-fit">
+                        <p className="text-xs font-semibold pl-4">Колір аксесуара</p>
                         {!isPendingProfileColors ? (
                             <>
                                 <SelectorSearch
@@ -137,24 +178,25 @@ const ProfileAccessoryCreateModal: FC<Props> = ({ profileAccessory, ...props }) 
                                         }
                                     ]}
                                     options={formattedColorOptions}
-                                    placeholder="Оберіть колір профілю"
+                                    placeholder="Без кольору"
                                     optionValue="value"
                                     optionLabel="label"
-                                    isEmptyValueDisable={true}
+                                    isEmptyValueDisable={false}
+                                    allowClear={true}
                                     searchable={true}
                                     hasError={!!errors.colorId}
                                 />
                                 {errors.colorId && (
-                                    <p className="text-red-500 text-xs mt-1">{errors.colorId.message as string}</p>
+                                    <p className="text-destructive-foreground text-xs mt-1">{errors.colorId.message as string}</p>
                                 )}
                             </>
                         ) : (
-                            <p className="text-gray-400 text-sm">Завантаження кольорів...</p>
+                            <p className="text-muted-foreground text-sm">Завантаження кольорів...</p>
                         )}
                     </div>
 
                     <div className="relative flex flex-col gap-[5px] h-fit">
-                        <p className="text-xs font-semibold pl-4">Одиниця виміру *</p>
+                        <p className="text-xs font-semibold pl-4">Одиниця виміру</p>
                         <Controller
                             control={control}
                             name="unit"
@@ -178,7 +220,7 @@ const ProfileAccessoryCreateModal: FC<Props> = ({ profileAccessory, ...props }) 
                             )}
                         />
                         {errors.unit && (
-                            <p className="text-red-500 text-sm">{errors.unit.message}</p>
+                            <p className="text-destructive-foreground text-sm">{errors.unit.message}</p>
                         )}
                     </div>
 
@@ -186,7 +228,7 @@ const ProfileAccessoryCreateModal: FC<Props> = ({ profileAccessory, ...props }) 
                         <Button
                             type="button"
                             onClick={props.onClose}
-                            color="red"
+                            color="blackNoneLine"
                             className="flex-1"
                             disabled={isPending}
                         >
@@ -196,7 +238,7 @@ const ProfileAccessoryCreateModal: FC<Props> = ({ profileAccessory, ...props }) 
                             type="submit"
                             color="greenDarkgreen"
                             className="flex-1"
-                            disabled={isPending}
+                            disabled={isPending || !isValid}
                         >
                             {isEditMode ? 'Оновити аксесуар' : 'Створити аксесуар'}
                         </Button>

@@ -40,16 +40,16 @@ export default function GcodeModal({ gcodeData, ...props }: GcodeModalProps) {
 
     return (
         <Modal {...props} className={cn(
-            'flex flex-col gap-2.5 max-w-[700px] min-h-10 rounded-base-mini mx-2 overflow-y-auto max-h-dvh h-auto',
+            'max-w-[700px]',
         )}
         >
             <Modal.Title className={'gap-2'} onClose={props.onClose}>
                 G-code для: {gcodeData.partName}
             </Modal.Title>
 
-            <Modal.Body className={'flex flex-col gap-4 rounded-xl p-3'}>
-                <div className="max-h-96 border border-blue-400 rounded overflow-y-auto">
-                    <div className="bg-gray-950 p-4 font-mono text-xs text-white whitespace-pre-wrap break-words">
+            <Modal.Body className={'flex flex-col gap-4'}>
+                <div className="max-h-96 border border-chart-1 rounded overflow-y-auto">
+                    <div className="bg-background p-4 font-mono text-xs text-foreground whitespace-pre-wrap break-words">
                         {gcodeData.gcode}
                     </div>
                 </div>

@@ -5,13 +5,16 @@ import Modal from "@/ui/Modal/Modal";
 import {cn} from "@/helpers/cn";
 import React, {FC, useEffect} from "react";
 import Input from "@/ui/input/Input";
-import {useForm} from "react-hook-form";
+import {Controller, useForm} from "react-hook-form";
 import Button from "@/ui/button/Button";
 import Loading from "@/ui/loading/Loading";
 import {IClient} from "@/screens/client/types/IClient";
 import {IClientForm} from "@/screens/client/types/IClientForm";
 import {useClientCreateMutation} from "@/screens/client/hooks/useClientCreateMutation";
 import {useClientUpdateMutation} from "@/screens/client/hooks/useClientUpdateMutation";
+import SelectorSearch from "@/componets/select/virtualized-list/SelectorSearch";
+import Hint from "@/ui/hint/Hint";
+import {PRICE_CATEGORIES} from "@/screens/order/types/order/IOrderForm";
 
 type IClientCreateModal = ModalProps & {
     client?: IClient | null;
@@ -20,13 +23,18 @@ type IClientCreateModal = ModalProps & {
 const ClientCreateModal: FC<IClientCreateModal> = ({ client, ...props }) => {
     const isEditMode = !!client;
 
-    const { control, handleSubmit, reset, formState: { errors }, setValue } = useForm<IClientForm>({
+    const { control, handleSubmit, trigger, reset, watch, formState: { errors, isValid }, setValue } = useForm<IClientForm>({
+        mode: 'onChange',
         defaultValues: {
             firstName: '',
             lastName: '',
             middleName: '',
             email: '',
             phone: '',
+            code1C: '',
+            // Порожньо, а не «представницька»: категорія — це домовленість
+            // із конкретним клієнтом, і підставляти її за нього не можна
+            priceCategory: '',
         }
     });
 
@@ -42,6 +50,8 @@ const ClientCreateModal: FC<IClientCreateModal> = ({ client, ...props }) => {
             setValue('middleName', client.middleName || '');
             setValue('email', client.email || '');
             setValue('phone', client.phone || '');
+            setValue('code1C', client.code1C || '');
+            setValue('priceCategory', client.priceCategory || '');
         } else if (!client && props.open) {
             reset();
         }
@@ -53,6 +63,18 @@ const ClientCreateModal: FC<IClientCreateModal> = ({ client, ...props }) => {
         }
     }, [props.open, reset]);
 
+    /**
+     * Кнопка збереження вимкнена, поки форма невалідна.
+     *
+     * У режимі редагування значення підставляються через `setValue`, а він не
+     * перераховує `isValid` — без явного `trigger` кнопка лишалась би сірою на
+     * вже заповненій формі. У режимі створення `trigger` не викликаємо: він би
+     * одразу підсвітив червоним усі порожні обов'язкові поля.
+     */
+    useEffect(() => {
+        if (props.open && isEditMode) void trigger();
+    }, [props.open, isEditMode, trigger]);
+
     const onSubmit = async (data: IClientForm) => {
         try {
             if (isEditMode && client) {
@@ -63,6 +85,9 @@ const ClientCreateModal: FC<IClientCreateModal> = ({ client, ...props }) => {
                     middleName: data.middleName || '',
                     email: data.email || '',
                     phone: data.phone || '',
+                    // Порожній рядок означає «прибрати категорію»,
+                    // а не «лишити як було»
+                    priceCategory: data.priceCategory || null,
                 };
                 await updateClient(updateData);
             } else {
@@ -72,6 +97,7 @@ const ClientCreateModal: FC<IClientCreateModal> = ({ client, ...props }) => {
                     middleName: data.middleName || '',
                     email: data.email || '',
                     phone: data.phone || '',
+                    priceCategory: data.priceCategory || undefined,
                 };
                 await createClient(createData);
             }
@@ -87,17 +113,17 @@ const ClientCreateModal: FC<IClientCreateModal> = ({ client, ...props }) => {
         <Modal
             {...props}
             className={cn(
-                'flex flex-col gap-2.5 max-w-[500px] min-h-10 rounded-base-mini mx-2 overflow-y-auto max-h-dvh h-auto',
+                'max-w-[500px]',
             )}
         >
             <Modal.Title className={'gap-2'} onClose={props.onClose}>
                 {isEditMode ? 'Редагувати клієнта' : 'Створити клієнта'}
             </Modal.Title>
 
-            <Modal.Body className={'flex flex-col gap-4 rounded-xl p-3'}>
+            <Modal.Body className={'flex flex-col gap-4'}>
                 <form onSubmit={handleSubmit(onSubmit)} className={'flex flex-col gap-4'}>
                     <div className={'relative flex flex-col gap-[5px] h-fit'}>
-                        <p className="text-xs font-semibold pl-4">Ім'я *</p>
+                        <p className="text-xs font-semibold pl-4">Ім'я</p>
                         <Input
                             control={control}
                             name={'firstName'}
@@ -108,12 +134,12 @@ const ClientCreateModal: FC<IClientCreateModal> = ({ client, ...props }) => {
                             }}
                         />
                         {errors.firstName && (
-                            <p className={'text-red-500 text-sm'}>{errors.firstName.message}</p>
+                            <p className={'text-destructive-foreground text-sm'}>{errors.firstName.message}</p>
                         )}
                     </div>
 
                     <div className={'relative flex flex-col gap-[5px] h-fit'}>
-                        <p className="text-xs font-semibold pl-4">Прізвище *</p>
+                        <p className="text-xs font-semibold pl-4">Прізвище</p>
                         <Input
                             control={control}
                             name={'lastName'}
@@ -124,7 +150,7 @@ const ClientCreateModal: FC<IClientCreateModal> = ({ client, ...props }) => {
                             }}
                         />
                         {errors.lastName && (
-                            <p className={'text-red-500 text-sm'}>{errors.lastName.message}</p>
+                            <p className={'text-destructive-foreground text-sm'}>{errors.lastName.message}</p>
                         )}
                     </div>
 
@@ -137,7 +163,7 @@ const ClientCreateModal: FC<IClientCreateModal> = ({ client, ...props }) => {
                             classNameContainer={'w-full'}
                         />
                         {errors.middleName && (
-                            <p className={'text-red-500 text-sm'}>{errors.middleName.message}</p>
+                            <p className={'text-destructive-foreground text-sm'}>{errors.middleName.message}</p>
                         )}
                     </div>
 
@@ -157,7 +183,7 @@ const ClientCreateModal: FC<IClientCreateModal> = ({ client, ...props }) => {
                             }}
                         />
                         {errors.email && (
-                            <p className={'text-red-500 text-sm'}>{errors.email.message}</p>
+                            <p className={'text-destructive-foreground text-sm'}>{errors.email.message}</p>
                         )}
                     </div>
 
@@ -171,15 +197,65 @@ const ClientCreateModal: FC<IClientCreateModal> = ({ client, ...props }) => {
                             classNameContainer={'w-full'}
                         />
                         {errors.phone && (
-                            <p className={'text-red-500 text-sm'}>{errors.phone.message}</p>
+                            <p className={'text-destructive-foreground text-sm'}>{errors.phone.message}</p>
                         )}
+                    </div>
+
+                    <div className={'relative flex flex-col gap-[5px] h-fit'}>
+                        <p className="text-xs font-semibold pl-4">Код 1С (необов'язково)</p>
+                        <Input
+                            control={control}
+                            name={'code1C'}
+                            placeholder={'Напр. 000011366'}
+                            classNameContainer={'w-full'}
+                        />
+                    </div>
+
+                    <div className={'relative flex flex-col gap-[5px] h-fit'}>
+                        <div className="flex items-center gap-1.5 pl-4">
+                            <p className="text-xs font-semibold">Цінова категорія (необов'язково)</p>
+                            <Hint title="Цінова категорія">
+                                <p>
+                                    За нею рахується вартість замовлень цього клієнта:
+                                    у новому замовленні категорія підставляється звідси,
+                                    і обирати її щоразу не потрібно.
+                                </p>
+                                <p>
+                                    Порожньо — з клієнтом про категорію не домовлялись:
+                                    у замовленні її обирають руками, як і раніше.
+                                </p>
+                                <p>
+                                    Якщо клієнт — дилер, категорія обов'язкова: він її не
+                                    бачить і обрати не може, тож без неї замовлення не
+                                    створиться.
+                                </p>
+                            </Hint>
+                        </div>
+                        <Controller
+                            control={control}
+                            name={'priceCategory'}
+                            render={({ field }) => (
+                                <SelectorSearch
+                                    getAndSet={[watch('priceCategory') ?? '', (value) => field.onChange(value)]}
+                                    options={PRICE_CATEGORIES}
+                                    optionValue="value"
+                                    optionLabel="label"
+                                    placeholder="Не задана"
+                                    // Категорію треба вміти прибрати, а не лише замінити
+                                    allowClear={true}
+                                    isEmptyValueDisable={false}
+                                    searchable={false}
+                                    className="w-full"
+                                />
+                            )}
+                        />
                     </div>
 
                     <div className="flex gap-3 mt-4">
                         <Button
                             type="button"
                             onClick={props.onClose}
-                            color="red"
+                            color="blackNoneLine"
                             className="flex-1"
                             disabled={isPending}
                         >
@@ -189,7 +265,7 @@ const ClientCreateModal: FC<IClientCreateModal> = ({ client, ...props }) => {
                             type="submit"
                             color="greenDarkgreen"
                             className="flex-1"
-                            disabled={isPending}
+                            disabled={isPending || !isValid}
                         >
                             {isEditMode ? 'Оновити клієнта' : 'Створити клієнта'}
                         </Button>

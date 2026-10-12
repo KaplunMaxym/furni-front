@@ -11,8 +11,24 @@ export enum DetailType {
     PROFILE = 'PROFILE',
     GLASS = 'GLASS',
     HANDLE = 'HANDLE',
+    HINGE = 'HINGE',
     OTHER = 'OTHER',
 }
+
+/**
+ * Тип деталі людською мовою.
+ *
+ * В інтерфейсі показувалось саме значення енума — «PROFILE», «GLASS». Це назви
+ * з бази, а не слова для майстра біля верстата; поруч у списку кольорів ті самі
+ * типи вже підписані українською (`COLOR_TYPE_LABELS`).
+ */
+export const DETAIL_TYPE_LABELS: Record<DetailType, string> = {
+    PROFILE: 'Профіль',
+    GLASS: 'Скло',
+    HANDLE: 'Ручка',
+    HINGE: 'Завіса',
+    OTHER: 'Інше',
+};
 
 export enum OperationType {
     CUT = 'CUT',
@@ -21,6 +37,11 @@ export enum OperationType {
     HINGE_MILL = 'HINGE_MILL',
     HANDLE_MILL = 'HANDLE_MILL',
     HANDLE_DRILL = 'HANDLE_DRILL',
+    MILL_DRILL = 'MILL_DRILL',
+    GROOVE_MILL = 'GROOVE_MILL',
+    SLOT_MILL = 'SLOT_MILL',
+    WIRE_MILL = 'WIRE_MILL',
+    BACK_GROOVE = 'BACK_GROOVE',
     ASSEMBLY = 'ASSEMBLY',
     OTHER = 'OTHER',
 }
@@ -38,7 +59,8 @@ export interface IProfileSystem {
     code: string;
     title: string;
     fileUrl: string;
-    operation: IProfileSystemOperation[]
+    operations?: IProfileSystemOperation[];
+    operation?: IProfileSystemOperation[];
 }
 
 export interface IConstructionStatus {
@@ -82,6 +104,7 @@ export interface IConstruction {
     profileSystem: IProfileSystem;
     drillParams: string;
     hingeParams: string;
+    operationParams?: Record<string, unknown> | string | null;
     millParams: string;
     cutParams: string;
     constructionStatusId: number;
@@ -98,6 +121,7 @@ export interface IConstruction {
     handleOffset?: number | null;
     handlePosition?: number | null;
     hingeSide?: HandleSideEnum | null;
+    wireSide?: HandleSideEnum | null;
     hasGlassEdge: boolean | null;
     colorId?: number | null;
     handleColorId?: number | null;

@@ -9,8 +9,14 @@ import {
 } from '@/config/api.config';
 import {IProfileServiceForm} from '@/screens/profile-service/types/IProfileServiceForm';
 
+export interface IProfileServiceQuery extends IQueryPagination {
+    /** Збіг за назвою або кодом 1С. */
+    search?: string;
+    profileSystemId?: number;
+}
+
 export const ProfileServiceService = {
-    getProfileServices: (params: IQueryPagination) =>
+    getProfileServices: (params: IProfileServiceQuery) =>
         instance({
             url: getProfileServiceUrl(),
             method: 'GET',

@@ -14,8 +14,6 @@ import SelectorSearch from "@/componets/select/virtualized-list/SelectorSearch";
 import {IUserForm} from "@/screens/users/types/user/IUserForm";
 import {IUser} from "@/screens/users/types/user/IUser";
 import {generatePassword} from "@/helpers/user-password/generatePassword";
-import EyeSvg from "@/assets/eye-svg";
-import EyeOffSvg from "@/assets/eye-off-svg";
 import {useUserRoles} from "@/screens/users/hooks/role/useUserRoles";
 
 type IModalCreateUser = ModalProps & {
@@ -25,7 +23,8 @@ type IModalCreateUser = ModalProps & {
 const UserCreateModal: FC<IModalCreateUser> = ({user, ...props}) => {
     const isEditMode = !!user;
 
-    const {control, handleSubmit, reset, formState: {errors}, setValue} = useForm<IUserForm>({
+    const {control, handleSubmit, trigger, reset, formState: { errors, isValid }, setValue} = useForm<IUserForm>({
+        mode: 'onChange',
         defaultValues: {
             name: '',
             email: '',
@@ -33,8 +32,6 @@ const UserCreateModal: FC<IModalCreateUser> = ({user, ...props}) => {
             role_id: undefined,
         }
     });
-
-    const [showPassword, setShowPassword] = useState(false);
     const [selectedRole, setSelectedRole] = useState<number | null>(null);
 
     const {mutateAsync: createUser, isPending: isCreating} = useUserCreateMutation();
@@ -68,6 +65,18 @@ const UserCreateModal: FC<IModalCreateUser> = ({user, ...props}) => {
         }
     }, [selectedRole, setValue, rolesData]);
 
+    /**
+     * Кнопка збереження вимкнена, поки форма невалідна.
+     *
+     * У режимі редагування значення підставляються через `setValue`, а він не
+     * перераховує `isValid` — без явного `trigger` кнопка лишалась би сірою на
+     * вже заповненій формі. У режимі створення `trigger` не викликаємо: він би
+     * одразу підсвітив червоним усі порожні обов'язкові поля.
+     */
+    useEffect(() => {
+        if (props.open && isEditMode) void trigger();
+    }, [props.open, isEditMode, trigger]);
+
     const onSubmit = async (data: IUserForm) => {
         try {
             if (!selectedRole) {
@@ -99,18 +108,18 @@ const UserCreateModal: FC<IModalCreateUser> = ({user, ...props}) => {
         }
     };
 
-    const isSubmitDisabled = isPending || isLoadingRoles;
+    const isSubmitDisabled = isPending || isLoadingRoles || !isValid;
 
     return (
         <Modal {...props} className={cn(
-            'flex flex-col gap-2.5 max-w-[500px] min-h-10 rounded-base-mini mx-2 overflow-y-auto max-h-dvh h-auto',
+            'max-w-[500px]',
         )}
         >
             <Modal.Title className={'gap-2'} onClose={props.onClose}>
                 {isEditMode ? 'Редагувати користувача' : 'Створити користувача'}
             </Modal.Title>
 
-            <Modal.Body className={'flex flex-col gap-4 rounded-xl p-3'}>
+            <Modal.Body className={'flex flex-col gap-4'}>
                 <form onSubmit={handleSubmit(onSubmit)} className={'flex flex-col gap-4'}>
                     <div className={'relative flex flex-col gap-[5px] h-fit'}>
                         <p className="text-xs font-semibold pl-4">Ім'я</p>
@@ -124,7 +133,7 @@ const UserCreateModal: FC<IModalCreateUser> = ({user, ...props}) => {
                             }}
                         />
                         {errors.name && (
-                            <p className={'text-red-500 text-sm'}>{errors.name.message}</p>
+                            <p className={'text-destructive-foreground text-sm'}>{errors.name.message}</p>
                         )}
                     </div>
 
@@ -145,19 +154,20 @@ const UserCreateModal: FC<IModalCreateUser> = ({user, ...props}) => {
                             }}
                         />
                         {errors.email && (
-                            <p className={'text-red-500 text-sm'}>{errors.email.message}</p>
+                            <p className={'text-destructive-foreground text-sm'}>{errors.email.message}</p>
                         )}
                     </div>
 
-                    <div className={'relative flex flex-col gap-[5px] h-fit'}>
+                    <div className={'flex flex-col gap-[5px] h-fit'}>
                         <p className="text-xs font-semibold pl-4">
                             Пароль {isEditMode && '(залиште порожнім, щоб не змінювати)'}
                         </p>
                         <div className="flex flex-col gap-2">
+                            {/* «Око» малює саме поле — його не треба ставити руками */}
                             <Input
                                 control={control}
                                 name={'password'}
-                                type={showPassword ? 'text' : 'password'}
+                                type={'password'}
                                 placeholder={isEditMode ? 'Введіть новий пароль (необов\'язково)' : 'Введіть пароль (мін. 6 символів)'}
                                 classNameContainer={'w-full'}
                                 rules={{
@@ -168,19 +178,9 @@ const UserCreateModal: FC<IModalCreateUser> = ({user, ...props}) => {
                                     },
                                 }}
                             />
-                            <button
-                                type="button"
-                                onClick={() => setShowPassword(prev => !prev)}
-                                className="absolute right-3 top-[45%] transform -translate-y-1/2 p-1 text-gray-600 hover:text-gray-800"
-                                tabIndex={0}
-                            >
-                                {showPassword ? <EyeOffSvg className={'w-[18px] h-[18px]'} /> : <EyeSvg className={'w-[18px] h-[18px]'} />}
-                            </button>
                             <p
                                 onClick={() => {
-                                    const newPassword = generatePassword();
-                                    setValue('password', newPassword);
-                                    setShowPassword(true);
+                                    setValue('password', generatePassword());
                                 }}
                                 className={'cursor-pointer text-sm text-right'}
                             >
@@ -188,7 +188,7 @@ const UserCreateModal: FC<IModalCreateUser> = ({user, ...props}) => {
                             </p>
                         </div>
                         {errors.password && (
-                            <p className={'text-red-500 text-sm'}>{errors.password.message}</p>
+                            <p className={'text-destructive-foreground text-sm'}>{errors.password.message}</p>
                         )}
                     </div>
 
@@ -204,7 +204,7 @@ const UserCreateModal: FC<IModalCreateUser> = ({user, ...props}) => {
                             className={'w-full'}
                         />
                         {errors.role_id && (
-                            <p className={'text-red-500 text-sm mt-1'}>{errors.role_id.message}</p>
+                            <p className={'text-destructive-foreground text-sm mt-1'}>{errors.role_id.message}</p>
                         )}
                     </div>
 
@@ -212,7 +212,7 @@ const UserCreateModal: FC<IModalCreateUser> = ({user, ...props}) => {
                         <Button
                             type="button"
                             onClick={props.onClose}
-                            color="red"
+                            color="blackNoneLine"
                             className="flex-1"
                             disabled={isPending}
                         >

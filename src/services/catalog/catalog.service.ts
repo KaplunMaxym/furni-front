@@ -8,6 +8,14 @@ import {
 } from "@/config/api.config";
 import {IQueryPagination} from "@/types/IQueryPagination";
 import {IColorForm} from "@/screens/catalog/types/IColorForm";
+import {ColorType} from "@/screens/catalog/types/IColor";
+
+export interface IColorQueryParams extends IQueryPagination {
+    /** Збіг за назвою або hex-кодом. */
+    search?: string;
+    /** Має серед своїх призначень цей тип. */
+    type?: ColorType;
+}
 
 export const CatalogService = {
     getColorSimple: () =>
@@ -25,7 +33,7 @@ export const CatalogService = {
             url: getColorsForHandleUrl(),
             method: 'GET'
         }),
-    getColors: (params: IQueryPagination) =>
+    getColors: (params: IColorQueryParams) =>
         instance({
             url: getColorsUrl(),
             method: 'GET',

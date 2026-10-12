@@ -1,41 +1,53 @@
 'use client'
 
-import {cn} from "@/helpers/cn";
-import React, {ComponentProps, FC} from "react";
+import { FC, ReactNode } from "react";
 
-interface IToggleBtnProps extends ComponentProps<'button'> {
+import { cn } from "@/helpers/cn";
+import { Switch } from "@/ui/shadcn/switch";
+
+interface IToggleBtnProps {
     useStateProps: [value: boolean, toggleFn: () => void];
+    children: ReactNode;
+    /** Рядок під підписом — пояснює, на що впливає перемикач. */
+    description?: ReactNode;
+    disabled?: boolean;
+    className?: string;
 }
 
-export const ToggleBtn: FC<IToggleBtnProps> = ({useStateProps, children, className, onClick, ...props}) => {
+/**
+ * Рядок із перемикачем: підпис ліворуч, перемикач праворуч.
+ *
+ * Розкладка й сам перемикач — зі сторінки налаштувань проєкту dashboard.
+ * Раніше це була кнопка-плашка з намальованим квадратиком-галочкою: увімкнений
+ * і вимкнений стани відрізнялись лише кольором тонкої рамки всередині, і на
+ * темному тлі це майже не читалось. До того ж уся плашка виглядала як кнопка
+ * дії, хоч нічого не запускала.
+ */
+export const ToggleBtn: FC<IToggleBtnProps> = ({
+    useStateProps,
+    children,
+    description,
+    disabled,
+    className,
+}) => {
     const [value, toggleFn] = useStateProps;
 
-    const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        toggleFn();
-
-        if (onClick) {
-            onClick(e);
-        }
-    };
-
     return (
-        <button
+        <div
             className={cn(
-                'bg-react/500 hover:bg-react/500/40 text-react/300 min-w-[40px] w-fit min-h-[40px] py-1 px-4 rounded-[12px] font-semibold transition-all duration-300 ease-out flex gap-[10px] items-center text-start',
+                'flex items-center justify-between gap-4 rounded-lg border border-border px-3 py-2.5',
+                disabled && 'opacity-60',
                 className,
             )}
-            onClick={handleClick}
-            type="button"
-            {...props}
         >
-            <div className={cn('border-2 border-red/500 size-[20px] rounded-[5px] flex items-center justify-center shrink-0 duration-300', value && 'border-emerald/500')}>
-                <div className={cn('bg-emerald/500 rounded-[2px] size-[12px] duration-300', !value && 'opacity-0')}>
-                </div>
+            <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-foreground">{children}</p>
+                {description && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+                )}
             </div>
-            {children}
-        </button>
-    )
-}
+
+            <Switch checked={value} disabled={disabled} onCheckedChange={toggleFn} />
+        </div>
+    );
+};

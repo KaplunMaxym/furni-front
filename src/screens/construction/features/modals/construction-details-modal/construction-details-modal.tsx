@@ -6,13 +6,14 @@ import { cn } from "@/helpers/cn";
 import React, { FC, useState } from "react";
 import { Check, Download, Barcode, FileCode, Printer } from "lucide-react";
 import Loading from "@/ui/loading/Loading";
+import { Button } from "@/ui/shadcn/button";
 import { formatDateTime } from "@/utils/time/formatDateTime";
 import { useConstructionDetails } from "@/screens/construction/hooks/construction-details/useConstructionDetails";
 import {
+    DETAIL_TYPE_LABELS,
     DetailType,
     IConstruction,
-    IConstructionDetails,
-    OperationType
+    IConstructionDetails
 } from "@/screens/construction/type/construction/IConstruction";
 import {
     downloadSingleLabel,
@@ -21,8 +22,9 @@ import {
     printSingleLabel
 } from "@/screens/construction/features/editor/utils/labelGenerator";
 import {useOrderDetails} from "@/screens/order/hooks/order/useOrderDetails";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 import {ConstructionDetail} from "@/screens/construction/type/construction-details/IConstructionDetail";
+import { SectionLabel } from "@/ui/section-label/SectionLabel";
 
 type IConstructionDetailModal = ModalProps & {
     constructionId: number | null;
@@ -45,30 +47,6 @@ const ConstructionDetailModal: FC<IConstructionDetailModal> = ({constructionId, 
     const [isPrintingLabel, setIsPrintingLabel] = useState(false);
 
     const detail = details?.find(d => d.id === detailId);
-
-    const getTypeColor = (type: DetailType): string => {
-        const colorMap: Record<DetailType, string> = {
-            [DetailType.PROFILE]: 'bg-blue/50 text-blue/600 border-blue/200',
-            [DetailType.GLASS]:   'bg-emerald/50 text-emerald/600 border-emerald/500',
-            [DetailType.HANDLE]:  'bg-green-primary/50 text-green-dark/600 border-green-secondary/600',
-            [DetailType.OTHER]:   'bg-gray/100 text-black/500 border-gray/200',
-        };
-        return colorMap[type];
-    };
-
-    const getOperationTypeColor = (type: OperationType): string => {
-        const colorMap: Record<OperationType, string> = {
-            [OperationType.CUT]:          'bg-red-error/50 border-red/500 text-black/600',
-            [OperationType.DRILL]:        'bg-yellow-attentiom/50 border-yellow/700 text-black/600',
-            [OperationType.MILL]:         'bg-emerald/50 border-emerald/600 text-black/600',
-            [OperationType.HANDLE_MILL]:  'bg-green-primary/50 border-green-secondary/600 text-black/600',
-            [OperationType.HANDLE_DRILL]: 'bg-yellow-attentiom/50 border-yellow/700 text-black/600',
-            [OperationType.ASSEMBLY]:     'bg-blue/50 border-blue/400 text-black/600',
-            [OperationType.OTHER]:        'bg-gray/100 border-gray/300 text-black/600',
-            [OperationType.HINGE_MILL]:   'bg-gray/100 border-gray/300 text-black/600',
-        };
-        return colorMap[type];
-    };
 
     const handleOperationComplete = async (operationId: number) => {
         if (!detailId) return;
@@ -136,13 +114,11 @@ const ConstructionDetailModal: FC<IConstructionDetailModal> = ({constructionId, 
 
             toast.success('Етикетка завантажена', {
                 duration: 3000,
-                position: 'top-right',
             });
         } catch (error) {
             console.error('Помилка при завантаженні етикетки:', error);
             toast.error('Помилка при завантаженні етикетки', {
                 duration: 4000,
-                position: 'top-right',
             });
         } finally {
             setIsDownloadingLabel(false);
@@ -160,7 +136,6 @@ const ConstructionDetailModal: FC<IConstructionDetailModal> = ({constructionId, 
             console.error('Помилка при друці етикетки:', error);
             toast.error('Помилка при друці етикетки', {
                 duration: 4000,
-                position: 'top-right',
             });
         } finally {
             setIsPrintingLabel(false);
@@ -193,225 +168,179 @@ const ConstructionDetailModal: FC<IConstructionDetailModal> = ({constructionId, 
         <Modal
             {...props}
             className={cn(
-                'flex flex-col gap-2.5 max-w-[1000px] min-h-10 rounded-base-mini mx-2 overflow-y-auto max-h-dvh h-auto',
+                'max-w-[1000px]',
             )}
         >
             <Modal.Title className={'gap-2'} onClose={props.onClose}>
                 Інформація про деталь
             </Modal.Title>
 
-            <Modal.Body className={'flex flex-col gap-4 rounded-xl p-3'}>
+            <Modal.Body className={'flex flex-col gap-4'}>
                 {isPending ? (
                     <div className="flex justify-center items-center h-48">
                         <Loading />
                     </div>
                 ) : detail ? (
-                    <div className="space-y-4">
-                        <div className="rounded-lg">
-                            <div className="flex items-center gap-3 mb-3">
-                                <span
-                                    className={cn(
-                                        "text-xs px-3 py-1.5 rounded-full border font-medium",
-                                        getTypeColor(detail.type)
-                                    )}
-                                >
-                                    {detail.type}
+                    <div className="flex flex-col gap-4">
+                        {/*
+                          * Тип деталі й тип операції були кольоровими плашками:
+                          * синя, смарагдова, жовта, червона. Колір не позначав ні
+                          * стану, ні терміновості — лише те, яке слово всередині,
+                          * тобто дублював сам напис і при цьому розфарбовував
+                          * половину вікна. Лишився нейтральний бейдж.
+                          */}
+                        <div className="flex flex-col gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="rounded-full border border-input px-2.5 py-0.5 text-xs text-muted-foreground">
+                                    {DETAIL_TYPE_LABELS[detail.type]}
                                 </span>
-                                <span className="text-lg font-bold text-gray-900">
+                                <h3 className="text-base font-semibold text-foreground">
                                     Деталь №{detail.detailNo}
-                                </span>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <span className="text-sm font-semibold text-gray-700">
-                                    R{detail.sequence} {detail.name}
-                                </span>
-                                {detail.type === DetailType.PROFILE && detail.length != null && (
-                                    <span className="text-sm font-bold text-gray-900">
-                                        {detail.length} мм
+                                </h3>
+                                {detail.isCompleted && (
+                                    <span className="flex items-center gap-1 text-xs text-chart-2">
+                                        <Check size={14} /> Завершена
                                     </span>
+                                )}
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                                <span>R{detail.sequence} {detail.name}</span>
+
+                                {detail.type === DetailType.PROFILE && detail.length != null && (
+                                    <span className="tabular-nums text-foreground">{detail.length} мм</span>
                                 )}
                                 {detail.type === DetailType.GLASS && detail.area != null && (
-                                    <span className="text-sm font-bold text-gray-900">
-                                        {detail.area} м²
-                                    </span>
+                                    <span className="tabular-nums text-foreground">{detail.area} м²</span>
                                 )}
                                 {detail.type === DetailType.HANDLE && detail.handleOffset != null && (
-                                    <span className="text-sm font-bold text-gray-900">
-                                        {detail.handleOffset} мм
-                                    </span>
+                                    <span className="tabular-nums text-foreground">{detail.handleOffset} мм</span>
                                 )}
                             </div>
                         </div>
 
-                        <div className="flex gap-2 flex-wrap">
-                            {detail.requiresLabel && (
-                                <>
-                                    <button
-                                        onClick={handleDownloadLabel}
-                                        disabled={isDownloadingLabel}
-                                        className={cn(
-                                            "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                                            isDownloadingLabel
-                                                ? "bg-purple-100 text-purple-700 border border-purple-300 opacity-50 cursor-not-allowed"
-                                                : "bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100"
-                                        )}
-                                    >
-                                        <Barcode size={16} />
-                                        {isDownloadingLabel ? 'Завантаження...' : 'Скачати етикетку'}
-                                    </button>
-
-                                    <button
-                                        onClick={handlePrintLabel}
-                                        disabled={isPrintingLabel}
-                                        className={cn(
-                                            "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                                            isPrintingLabel
-                                                ? "bg-blue-100 text-blue-700 border border-blue-300 opacity-50 cursor-not-allowed"
-                                                : "bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100"
-                                        )}
-                                    >
-                                        <Printer size={16} />
-                                        {isPrintingLabel ? 'Друк...' : 'Роздрукувати'}
-                                    </button>
-                                </>
-                            )}
-
-                            {detail.operations.length > 0 && (
-                                <button
-                                    onClick={() => onDownloadAllGCode(detail.id)}
-                                    className={cn(
-                                        "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                                        "bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100"
-                                    )}
-                                >
-                                    <FileCode size={16} />
-                                    Весь G-Code ({detail.operations.length})
-                                </button>
-                            )}
-
-                            <button
+                        {/*
+                          * Дії однакові на вигляд, окрім головної — «Позначити
+                          * завершеною». Раніше кожна мала власний колір (фіолетова,
+                          * синя, індигова, смарагдова), тож жодна не читалася як
+                          * основна, хоча натискають переважно її.
+                          */}
+                        <div className="flex flex-wrap gap-2 border-y border-border py-3">
+                            <Button
+                                type="button"
                                 onClick={handleDetailComplete}
                                 disabled={loadingDetail || detail.isCompleted}
-                                className={cn(
-                                    "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                                    detail.isCompleted
-                                        ? "bg-emerald/500 text-emerald/50 border border-emerald/600 hover:bg-emerald/500 opacity-75 cursor-default"
-                                        : "bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100",
-                                    (loadingDetail && !detail.isCompleted) && "opacity-50 cursor-not-allowed"
-                                )}
+                                variant={detail.isCompleted ? 'secondary' : 'default'}
                             >
                                 <Check size={16} />
-                                {detail.isCompleted ? 'Деталь завершена' : 'Позначити як завершену'}
-                            </button>
+                                {detail.isCompleted ? 'Деталь завершена' : 'Позначити завершеною'}
+                            </Button>
+
+                            {detail.operations.length > 0 && (
+                                <Button type="button" variant="outline" onClick={() => onDownloadAllGCode(detail.id)}>
+                                    <FileCode size={16} />
+                                    Весь G-Code ({detail.operations.length})
+                                </Button>
+                            )}
 
                             {detail.requiresLabel && (
-                                <button
-                                    onClick={handleLabelByDetailDownload}
-                                    disabled={loadingDetail || detail.isDownloadLabel}
-                                    className={cn(
-                                        "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                                        detail.isDownloadLabel
-                                            ? "bg-emerald/500 text-emerald/50 border border-emerald/600 hover:bg-emerald/500 opacity-75 cursor-default"
-                                            : "bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100",
-                                        (loadingDetail && !detail.isDownloadLabel) && "opacity-50 cursor-not-allowed"
-                                    )}
-                                >
-                                    <Check size={16} />
-                                    {detail.isDownloadLabel ? 'Етикетку завантажено' : 'Завантажити етикетку'}
-                                </button>
+                                <>
+                                    <Button type="button" variant="outline" onClick={handleDownloadLabel} disabled={isDownloadingLabel}>
+                                        <Barcode size={16} />
+                                        {isDownloadingLabel ? 'Завантаження…' : 'Скачати етикетку'}
+                                    </Button>
+
+                                    <Button type="button" variant="outline" onClick={handlePrintLabel} disabled={isPrintingLabel}>
+                                        <Printer size={16} />
+                                        {isPrintingLabel ? 'Друк…' : 'Роздрукувати'}
+                                    </Button>
+
+                                    <Button
+                                        type="button"
+                                        variant={detail.isDownloadLabel ? 'secondary' : 'outline'}
+                                        onClick={handleLabelByDetailDownload}
+                                        disabled={loadingDetail || detail.isDownloadLabel}
+                                    >
+                                        <Check size={16} />
+                                        {detail.isDownloadLabel ? 'Етикетку завантажено' : 'Позначити етикетку'}
+                                    </Button>
+                                </>
                             )}
                         </div>
 
-                        <div>
-                            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">
-                                Операції ({detail.operations.length})
-                            </p>
+                        <div className="overflow-hidden rounded-lg border border-border">
+                            {/* Такий самий підпис групи, як у розкладі вартості */}
+                            <SectionLabel>Операції ({detail.operations.length})</SectionLabel>
+
                             {detail.operations.length > 0 ? (
-                                <div className="space-y-2">
-                                    {detail.operations.map((operation) => {
+                                <div className="flex flex-col gap-2 p-3">
+                                    {detail.operations.map(operation => {
                                         const isOperationLoading = loadingOperations.has(operation.id);
 
                                         return (
                                             <div
                                                 key={operation.id}
                                                 className={cn(
-                                                    "p-3 rounded-lg border transition-all",
-                                                    getOperationTypeColor(operation.type),
-                                                    operation.isCompleted && 'opacity-75'
+                                                    'rounded-lg border border-border p-3 transition-opacity',
+                                                    operation.isCompleted && 'opacity-70',
                                                 )}
                                             >
-                                                <div className="space-y-2">
-                                                    <div className="flex items-start justify-between gap-2">
-                                                        <div className="flex-1">
-                                                            <div className="flex items-center gap-2">
-                                                                {operation.isCompleted && (
-                                                                    <Check size={14} className="text-green-600 flex-shrink-0" />
-                                                                )}
-                                                                <span className="text-xs font-bold text-gray-900">
-                                                                    {operation.type}
+                                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="rounded border border-input px-1.5 py-0.5 text-xs text-muted-foreground">
+                                                                {operation.type}
+                                                            </span>
+                                                            {operation.isCompleted && (
+                                                                <span className="flex items-center gap-1 text-xs text-chart-2">
+                                                                    <Check size={13} /> Завершено
                                                                 </span>
-                                                            </div>
-                                                            <p className="text-sm font-medium text-gray-800 mt-1">
-                                                                {operation.title}
-                                                            </p>
-                                                        </div>
-                                                        <div className="text-right flex-shrink-0">
-                                                            {operation.isCompleted && operation.completedAt && (
-                                                                <p className="text-xs text-gray-600">
-                                                                    {formatDateTime(operation.completedAt)}
-                                                                </p>
                                                             )}
                                                         </div>
+                                                        <p className="mt-1 text-sm text-foreground">{operation.title}</p>
                                                     </div>
 
-                                                    <div className="flex gap-2 flex-wrap pt-2 border-t border-white/20">
-                                                        <button
-                                                            onClick={() => onDownloadGCode(operation.id)}
-                                                            className={cn(
-                                                                "flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors",
-                                                                "bg-emerald/500 hover:bg-emerald/600 text-gray-900"
-                                                            )}
+                                                    {operation.isCompleted && operation.completedAt && (
+                                                        <p className="shrink-0 text-xs text-muted-foreground">
+                                                            {formatDateTime(operation.completedAt)}
+                                                        </p>
+                                                    )}
+                                                </div>
+
+                                                <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
+                                                    <Button
+                                                        type="button"
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => onDownloadGCode(operation.id)}
+                                                    >
+                                                        <Download size={14} />
+                                                        G-Code
+                                                    </Button>
+
+                                                    {!operation.isCompleted && (
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            onClick={() => handleOperationComplete(operation.id)}
+                                                            disabled={isOperationLoading}
                                                         >
-                                                            <Download size={14} />
-                                                            G-Code
-                                                        </button>
-
-                                                        {!operation.isCompleted && (
-                                                            <button
-                                                                onClick={() => handleOperationComplete(operation.id)}
-                                                                disabled={isOperationLoading}
-                                                                className={cn(
-                                                                    "flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors",
-                                                                    "bg-blue/400 hover:bg-blue/600 text-gray-900",
-                                                                    isOperationLoading && "opacity-50 cursor-not-allowed"
-                                                                )}
-                                                            >
-                                                                <Check size={14} />
-                                                                {isOperationLoading ? 'Збереження...' : 'Готово'}
-                                                            </button>
-                                                        )}
-
-                                                        {operation.isCompleted && (
-                                                            <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl cursor-default text-xs font-medium bg-emerald/500 text-gray-600">
-                                                                <Check size={14} />
-                                                                Завершено
-                                                            </div>
-                                                        )}
-                                                    </div>
+                                                            <Check size={14} />
+                                                            {isOperationLoading ? 'Збереження…' : 'Готово'}
+                                                        </Button>
+                                                    )}
                                                 </div>
                                             </div>
                                         );
                                     })}
                                 </div>
                             ) : (
-                                <p className="text-sm text-gray-500">Операції не призначено</p>
+                                <p className="p-3 text-sm text-muted-foreground">Операції не призначено</p>
                             )}
                         </div>
                     </div>
                 ) : (
-                    <div className="text-center py-8">
-                        <p className="text-gray-500">Деталь не знайдена</p>
-                    </div>
+                    <p className="py-8 text-center text-sm text-muted-foreground">Деталь не знайдена</p>
                 )}
             </Modal.Body>
         </Modal>

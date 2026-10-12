@@ -33,6 +33,8 @@ interface DimensionLinesProps {
     onHoleHover?: (key: FocusedHoleKey) => void;
     hingeSide?: HandleSideEnum;
     hingeParams?: HingeDefaultParameters;
+    hasHinge?: boolean;
+    operationParams?: Record<string, unknown>;
 }
 
 function extractOffsets(
@@ -47,13 +49,7 @@ function extractOffsets(
 const HOLE_BASE = 26;
 const HOLE_STEP = 14;
 
-export function DimensionLines({
-                                   frameWidth, frameHeight, beamThickness,
-                                   hasHandle, handleSide, handleOffset, handlePosition,
-                                   drillParams, millParams,
-                                   focusedHole, onHoleHover,
-                                   hingeSide, hingeParams,
-                               }: DimensionLinesProps) {
+export function DimensionLines({frameWidth, frameHeight, beamThickness, hasHandle, handleSide, handleOffset, handlePosition, drillParams, millParams, focusedHole, onHoleHover, hingeSide, hingeParams, hasHinge = true, operationParams}: DimensionLinesProps) {
     const [lines, setLines] = useState<(LinesState & { hingeLines?: HingeLine[] }) | null>(null);
     const [hoveredHole, setHoveredHole] = useState<{
         pt: Pt; label: string;
@@ -161,31 +157,56 @@ export function DimensionLines({
 
             const notchLines: NotchLine[] = [];
 
+            const millFor = (slot: 'TOP' | 'BOTTOM' | 'LEFT' | 'RIGHT'): number | null => {
+                const mp = millParams as unknown as
+                    Record<string, { millSides?: string; millLength?: number; millLengthStart?: number }> | undefined;
+                const sp =
+                    mp?.[slot] ??
+                    (slot === 'TOP'    ? mp?.BACK  : undefined) ??
+                    (slot === 'BOTTOM' ? mp?.FRONT : undefined);
+                if (!sp) return null;
+                if ((sp.millSides ?? 'none') === 'none') return null;
+                const len = Number(sp.millLengthStart ?? sp.millLength ?? 0);
+                return len > 0 ? len : null;
+            };
+
             if (millParams) {
                 const ignoreHandleSide = (millParams)?.ignoreHandleSide === true;
 
                 if (ignoreHandleSide) {
-                    const leftMill  = millParams?.LEFT?.millLength  ?? bt * 2.5;
-                    const leftEdge  = leftMill / 2;
-                    notchLines.push({ pt: project(-hw + bt / 2,  hh - leftEdge),  ptStart: project(-hw + bt / 2,  hh - leftEdge - leftMill / 2),  ptEnd: project(-hw + bt / 2,  hh - leftEdge + leftMill / 2),  label: `${leftMill}мм`,  isVertical: false, anchorEnd: false });
-                    notchLines.push({ pt: project(-hw + bt / 2, -hh + leftEdge),  ptStart: project(-hw + bt / 2, -hh + leftEdge - leftMill / 2),  ptEnd: project(-hw + bt / 2, -hh + leftEdge + leftMill / 2),  label: `${leftMill}мм`,  isVertical: false, anchorEnd: true  });
+                    const leftMill  = millFor('LEFT');
+                    const leftEdge  = leftMill !== null ? leftMill / 2 : 0;
+                    if (leftMill !== null) notchLines.push({ pt: project(-hw + bt / 2,  hh - leftEdge),  ptStart: project(-hw + bt / 2,  hh - leftEdge - leftMill / 2),  ptEnd: project(-hw + bt / 2,  hh - leftEdge + leftMill / 2),  label: `${leftMill}мм`,  isVertical: false, anchorEnd: false });
+                    if (leftMill !== null) notchLines.push({ pt: project(-hw + bt / 2, -hh + leftEdge),  ptStart: project(-hw + bt / 2, -hh + leftEdge - leftMill / 2),  ptEnd: project(-hw + bt / 2, -hh + leftEdge + leftMill / 2),  label: `${leftMill}мм`,  isVertical: false, anchorEnd: true  });
 
-                    const rightMill = millParams?.RIGHT?.millLength ?? bt * 2.5;
-                    const rightEdge = rightMill / 2;
-                    notchLines.push({ pt: project(hw - bt / 2,  hh - rightEdge), ptStart: project(hw - bt / 2,  hh - rightEdge - rightMill / 2), ptEnd: project(hw - bt / 2,  hh - rightEdge + rightMill / 2), label: `${rightMill}мм`, isVertical: false, anchorEnd: false });
-                    notchLines.push({ pt: project(hw - bt / 2, -hh + rightEdge), ptStart: project(hw - bt / 2, -hh + rightEdge - rightMill / 2), ptEnd: project(hw - bt / 2, -hh + rightEdge + rightMill / 2), label: `${rightMill}мм`, isVertical: false, anchorEnd: true  });
+                    const rightMill = millFor('RIGHT');
+                    const rightEdge = rightMill !== null ? rightMill / 2 : 0;
+                    if (rightMill !== null) notchLines.push({ pt: project(hw - bt / 2,  hh - rightEdge), ptStart: project(hw - bt / 2,  hh - rightEdge - rightMill / 2), ptEnd: project(hw - bt / 2,  hh - rightEdge + rightMill / 2), label: `${rightMill}мм`, isVertical: false, anchorEnd: false });
+                    if (rightMill !== null) notchLines.push({ pt: project(hw - bt / 2, -hh + rightEdge), ptStart: project(hw - bt / 2, -hh + rightEdge - rightMill / 2), ptEnd: project(hw - bt / 2, -hh + rightEdge + rightMill / 2), label: `${rightMill}мм`, isVertical: false, anchorEnd: true  });
 
-                    const topMill = millParams?.TOP?.millLength ?? bt * 2.5;
-                    const topEdge = topMill / 2;
-                    notchLines.push({ pt: project(-hw + topEdge, hh - bt / 2), ptStart: project(-hw + topEdge - topMill / 2, hh - bt / 2), ptEnd: project(-hw + topEdge + topMill / 2, hh - bt / 2), label: `${topMill}мм`, isVertical: true, anchorEnd: true  });
-                    notchLines.push({ pt: project( hw - topEdge, hh - bt / 2), ptStart: project( hw - topEdge - topMill / 2, hh - bt / 2), ptEnd: project( hw - topEdge + topMill / 2, hh - bt / 2), label: `${topMill}мм`, isVertical: true, anchorEnd: false });
+                    const topMill = millFor('TOP');
+                    const topEdge = topMill !== null ? topMill / 2 : 0;
+                    if (topMill !== null) notchLines.push({ pt: project(-hw + topEdge, hh - bt / 2), ptStart: project(-hw + topEdge - topMill / 2, hh - bt / 2), ptEnd: project(-hw + topEdge + topMill / 2, hh - bt / 2), label: `${topMill}мм`, isVertical: true, anchorEnd: true  });
+                    if (topMill !== null) notchLines.push({ pt: project( hw - topEdge, hh - bt / 2), ptStart: project( hw - topEdge - topMill / 2, hh - bt / 2), ptEnd: project( hw - topEdge + topMill / 2, hh - bt / 2), label: `${topMill}мм`, isVertical: true, anchorEnd: false });
 
-                    const botMill = millParams?.BOTTOM?.millLength ?? bt * 2.5;
-                    const botEdge = botMill / 2;
-                    notchLines.push({ pt: project(-hw + botEdge, -hh + bt / 2), ptStart: project(-hw + botEdge - botMill / 2, -hh + bt / 2), ptEnd: project(-hw + botEdge + botMill / 2, -hh + bt / 2), label: `${botMill}мм`, isVertical: true, anchorEnd: true  });
-                    notchLines.push({ pt: project( hw - botEdge, -hh + bt / 2), ptStart: project( hw - botEdge - botMill / 2, -hh + bt / 2), ptEnd: project( hw - botEdge + botMill / 2, -hh + bt / 2), label: `${botMill}мм`, isVertical: true, anchorEnd: false });
+                    const botMill = millFor('BOTTOM');
+                    const botEdge = botMill !== null ? botMill / 2 : 0;
+                    if (botMill !== null) notchLines.push({ pt: project(-hw + botEdge, -hh + bt / 2), ptStart: project(-hw + botEdge - botMill / 2, -hh + bt / 2), ptEnd: project(-hw + botEdge + botMill / 2, -hh + bt / 2), label: `${botMill}мм`, isVertical: true, anchorEnd: true  });
+                    if (botMill !== null) notchLines.push({ pt: project( hw - botEdge, -hh + bt / 2), ptStart: project( hw - botEdge - botMill / 2, -hh + bt / 2), ptEnd: project( hw - botEdge + botMill / 2, -hh + bt / 2), label: `${botMill}мм`, isVertical: true, anchorEnd: false });
                 } else {
-                    const effectiveHandleSide = handleSide ?? HandleSideEnum.LEFT;
+                    /*
+                     * Фасад без ручки — так, ніби ручка справа.
+                     *
+                     * Те саме правило, що й у виїмках на моделі
+                     * (`HingeNotchesMesh`): без ручки `handleSide` порожній, і
+                     * підставлена ліва ручка ставила розміри до правої стійки.
+                     * Підписи мусять стояти там само, де намальовані виїмки, —
+                     * інакше розмір показує на одну стійку, а фреза йде по
+                     * іншій.
+                     */
+                    const effectiveHandleSide = hasHandle === false
+                        ? HandleSideEnum.RIGHT
+                        : handleSide ?? HandleSideEnum.LEFT;
 
                     const hingeSideLocal =
                         effectiveHandleSide === HandleSideEnum.LEFT  ? HandleSideEnum.RIGHT  :
@@ -197,42 +218,81 @@ export function DimensionLines({
                         const signX       = hingeSideLocal === HandleSideEnum.RIGHT ? 1 : -1;
                         const beamCenterX = signX * (hw - bt / 2);
 
-                        const vertMill = (hingeSideLocal === HandleSideEnum.LEFT ? millParams?.LEFT?.millLength : millParams?.RIGHT?.millLength) ?? bt * 2.5;
-                        const vertEdge = vertMill / 2;
+                        const vertMill = millFor(hingeSideLocal === HandleSideEnum.LEFT ? 'LEFT' : 'RIGHT');
+                        const vertEdge = vertMill !== null ? vertMill / 2 : 0;
 
-                        notchLines.push({ pt: project(beamCenterX, hh - vertEdge),  ptStart: project(beamCenterX, hh - vertEdge - vertMill / 2),  ptEnd: project(beamCenterX, hh - vertEdge + vertMill / 2),  label: `${vertMill}мм`, isVertical: false, anchorEnd: false });
-                        notchLines.push({ pt: project(beamCenterX, -hh + vertEdge), ptStart: project(beamCenterX, -hh + vertEdge - vertMill / 2), ptEnd: project(beamCenterX, -hh + vertEdge + vertMill / 2), label: `${vertMill}мм`, isVertical: false, anchorEnd: true  });
+                        if (vertMill !== null) if (vertMill !== null) notchLines.push({ pt: project(beamCenterX, hh - vertEdge),  ptStart: project(beamCenterX, hh - vertEdge - vertMill / 2),  ptEnd: project(beamCenterX, hh - vertEdge + vertMill / 2),  label: `${vertMill}мм`, isVertical: false, anchorEnd: false });
+                        if (vertMill !== null) if (vertMill !== null) notchLines.push({ pt: project(beamCenterX, -hh + vertEdge), ptStart: project(beamCenterX, -hh + vertEdge - vertMill / 2), ptEnd: project(beamCenterX, -hh + vertEdge + vertMill / 2), label: `${vertMill}мм`, isVertical: false, anchorEnd: true  });
 
-                        const topMill = millParams?.TOP?.millLength ?? bt * 2.5;
-                        const topEdge = topMill / 2;
+                        const topMill = millFor('TOP');
+                        const topEdge = topMill !== null ? topMill / 2 : 0;
                         const tCenter = signX * (hw - topEdge);
-                        notchLines.push({ pt: project(tCenter, hh - bt / 2), ptStart: project(tCenter - topMill / 2, hh - bt / 2), ptEnd: project(tCenter + topMill / 2, hh - bt / 2), label: `${topMill}мм`, isVertical: true, anchorEnd: signX < 0 });
+                        if (topMill !== null) notchLines.push({ pt: project(tCenter, hh - bt / 2), ptStart: project(tCenter - topMill / 2, hh - bt / 2), ptEnd: project(tCenter + topMill / 2, hh - bt / 2), label: `${topMill}мм`, isVertical: true, anchorEnd: signX < 0 });
 
-                        const botMill = millParams?.BOTTOM?.millLength ?? bt * 2.5;
-                        const botEdge = botMill / 2;
+                        const botMill = millFor('BOTTOM');
+                        const botEdge = botMill !== null ? botMill / 2 : 0;
                         const bCenter = signX * (hw - botEdge);
-                        notchLines.push({ pt: project(bCenter, -hh + bt / 2), ptStart: project(bCenter - botMill / 2, -hh + bt / 2), ptEnd: project(bCenter + botMill / 2, -hh + bt / 2), label: `${botMill}мм`, isVertical: true, anchorEnd: signX < 0 });
+                        if (botMill !== null) notchLines.push({ pt: project(bCenter, -hh + bt / 2), ptStart: project(bCenter - botMill / 2, -hh + bt / 2), ptEnd: project(bCenter + botMill / 2, -hh + bt / 2), label: `${botMill}мм`, isVertical: true, anchorEnd: signX < 0 });
                     }
 
                     if (hingeSideLocal === HandleSideEnum.TOP || hingeSideLocal === HandleSideEnum.BOTTOM) {
                         const signY       = hingeSideLocal === HandleSideEnum.TOP ? 1 : -1;
                         const beamCenterY = signY * (hh - bt / 2);
 
-                        const horizMill = (hingeSideLocal === HandleSideEnum.TOP ? millParams?.TOP?.millLength : millParams?.BOTTOM?.millLength) ?? bt * 2.5;
-                        const horizEdge = horizMill / 2;
+                        const horizMill = millFor(hingeSideLocal === HandleSideEnum.TOP ? 'TOP' : 'BOTTOM');
+                        const horizEdge = horizMill !== null ? horizMill / 2 : 0;
 
-                        notchLines.push({ pt: project(-hw + horizEdge, beamCenterY), ptStart: project(-hw + horizEdge - horizMill / 2, beamCenterY), ptEnd: project(-hw + horizEdge + horizMill / 2, beamCenterY), label: `${horizMill}мм`, isVertical: true, anchorEnd: false });
-                        notchLines.push({ pt: project(hw - horizEdge,  beamCenterY), ptStart: project(hw - horizEdge - horizMill / 2,  beamCenterY), ptEnd: project(hw - horizEdge + horizMill / 2,  beamCenterY), label: `${horizMill}мм`, isVertical: true, anchorEnd: true  });
+                        if (horizMill !== null) if (horizMill !== null) notchLines.push({ pt: project(-hw + horizEdge, beamCenterY), ptStart: project(-hw + horizEdge - horizMill / 2, beamCenterY), ptEnd: project(-hw + horizEdge + horizMill / 2, beamCenterY), label: `${horizMill}мм`, isVertical: true, anchorEnd: false });
+                        if (horizMill !== null) if (horizMill !== null) notchLines.push({ pt: project(hw - horizEdge,  beamCenterY), ptStart: project(hw - horizEdge - horizMill / 2,  beamCenterY), ptEnd: project(hw - horizEdge + horizMill / 2,  beamCenterY), label: `${horizMill}мм`, isVertical: true, anchorEnd: true  });
 
-                        const leftMill = millParams?.LEFT?.millLength ?? bt * 2.5;
-                        const leftEdge = leftMill / 2;
+                        const leftMill = millFor('LEFT');
+                        const leftEdge = leftMill !== null ? leftMill / 2 : 0;
                         const lCenter  = signY * (hh - leftEdge);
-                        notchLines.push({ pt: project(-hw + bt / 2, lCenter), ptStart: project(-hw + bt / 2, lCenter - leftMill / 2), ptEnd: project(-hw + bt / 2, lCenter + leftMill / 2), label: `${leftMill}мм`, isVertical: false, anchorEnd: signY < 0 });
+                        if (leftMill !== null) notchLines.push({ pt: project(-hw + bt / 2, lCenter), ptStart: project(-hw + bt / 2, lCenter - leftMill / 2), ptEnd: project(-hw + bt / 2, lCenter + leftMill / 2), label: `${leftMill}мм`, isVertical: false, anchorEnd: signY < 0 });
 
-                        const rightMill = millParams?.RIGHT?.millLength ?? bt * 2.5;
-                        const rightEdge = rightMill / 2;
+                        const rightMill = millFor('RIGHT');
+                        const rightEdge = rightMill !== null ? rightMill / 2 : 0;
                         const rCenter   = signY * (hh - rightEdge);
-                        notchLines.push({ pt: project(hw - bt / 2, rCenter), ptStart: project(hw - bt / 2, rCenter - rightMill / 2), ptEnd: project(hw - bt / 2, rCenter + rightMill / 2), label: `${rightMill}мм`, isVertical: false, anchorEnd: signY < 0 });
+                        if (rightMill !== null) notchLines.push({ pt: project(hw - bt / 2, rCenter), ptStart: project(hw - bt / 2, rCenter - rightMill / 2), ptEnd: project(hw - bt / 2, rCenter + rightMill / 2), label: `${rightMill}мм`, isVertical: false, anchorEnd: signY < 0 });
+                    }
+                }
+            }
+
+            const grooveParams = (operationParams as Record<string, Record<string, {
+                startX?: number; width?: number; endOffsetX?: number; offsetX?: number;
+            }>> | undefined)?.GROOVE_MILL;
+
+            if (grooveParams) {
+                for (const side of ['LEFT', 'RIGHT'] as const) {
+                    const g = grooveParams[side];
+                    if (!g?.width) continue;
+
+                    const startX     = Number(g.startX ?? 0);
+                    const width      = Number(g.width ?? 0);
+                    const endOffsetX = Number(g.endOffsetX ?? 0);
+                    const offsetX    = Number(g.offsetX ?? 0);
+
+                    const beamX = side === 'LEFT' ? -hw + bt / 2 : hw - bt / 2;
+                    const len   = Math.abs(width);
+
+                    const marks: Array<{ along: number; label: string; anchorEnd: boolean }> = [
+                        { along: startX + width / 2 + offsetX,
+                          label: `${startX}мм`, anchorEnd: false },
+                        { along: frameHeight - endOffsetX + width / 2 + offsetX,
+                          label: `${endOffsetX}мм`, anchorEnd: true },
+                    ];
+
+                    for (const m of marks) {
+                        if (m.along <= 0 || m.along >= frameHeight) continue;
+                        const y = -hh + m.along;
+                        notchLines.push({
+                            pt:      project(beamX, y),
+                            ptStart: project(beamX, y - len / 2),
+                            ptEnd:   project(beamX, y + len / 2),
+                            label:   m.label,
+                            isVertical: false,
+                            anchorEnd: m.anchorEnd,
+                        });
                     }
                 }
             }
@@ -240,7 +300,7 @@ export function DimensionLines({
             // ── Hinge labels ─────────────────────────────────────────────────
             const hingeLines: HingeLine[] = [];
 
-            if (hingeSide && hingeParams) {
+            if (hasHinge && hingeSide && hingeParams) {
                 const isLeft  = hingeSide === HandleSideEnum.LEFT;
                 const isRight = hingeSide === HandleSideEnum.RIGHT;
 
@@ -286,7 +346,7 @@ export function DimensionLines({
 
         animFrameRef.current = requestAnimationFrame(loop);
         return () => cancelAnimationFrame(animFrameRef.current);
-    }, [frameWidth, frameHeight, beamThickness, hasHandle, handleSide, handleOffset, handlePosition, drillParams, millParams, hingeSide, hingeParams]);
+    }, [frameWidth, frameHeight, beamThickness, hasHandle, handleSide, handleOffset, handlePosition, drillParams, millParams, hingeSide, hingeParams, operationParams]);
 
     if (!lines) return null;
 

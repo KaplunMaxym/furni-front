@@ -1,12 +1,24 @@
-import {ChangeEvent, ComponentProps, useId} from "react";
+import {ChangeEvent, ComponentProps, useId, useState} from "react";
 import {FieldValues, Path, Control, Controller} from "react-hook-form";
+import {Eye, EyeOff} from "lucide-react";
 import {cn} from "@/helpers/cn";
+import Hint from "@/ui/hint/Hint";
 
 interface IInputProps<T extends FieldValues> extends ComponentProps<'input'> {
     control: Control<T>;
     name: Path<T>;
     rules?: object;
     label?: string;
+    /** Пояснення поля — іконка поруч із підписом. */
+    hint?: string;
+    /**
+     * Одиниця виміру всередині поля — «мм», «шт», «°».
+     *
+     * Раніше її писали в підпис: «Ширина (мм) (X):». Підпис від того ріс, а
+     * при введенні його не видно взагалі — око в полі, а не над ним. Тепер
+     * одиниця стоїть праворуч у самому полі, поруч із числом.
+     */
+    unit?: string;
     maxLength?: number
     img?: string
     isTextarea?: boolean,
@@ -15,10 +27,27 @@ interface IInputProps<T extends FieldValues> extends ComponentProps<'input'> {
     inputRef?: (el: HTMLInputElement | null) => void;
 }
 
-const Input = <T extends FieldValues, >({control, name, rules, label, type = 'text', inputRef, onChange, maxLength = 100000, img, isTextarea, onFocus, onBlur, placeholder, className, classNameContainer, ...props}: IInputProps<T>) => {
+const Input = <T extends FieldValues, >({control, name, rules, label, hint, unit, type = 'text', inputRef, onChange, maxLength = 100000, img, isTextarea, onFocus, onBlur, placeholder, className, classNameContainer, ...props}: IInputProps<T>) => {
     const isPhoneType = type === 'tel'
     // const isTextType = types === 'text'
     const id = useId()
+
+    /*
+     * Показ пароля живе в самому полі.
+     *
+     * Кожна форма робила це сама: тримала свій `showPassword` і клала «око»
+     * абсолютно позиціонованою кнопкою — `top-[45%]` в одній, `top-[38px]` у
+     * другій, `top-[34px]` у третій. Числа підбирались на око під конкретну
+     * розкладку, і варто було додати підпис чи текст помилки, як іконка
+     * з'їжджала повз поле.
+     *
+     * Тут вона центрується відносно обгортки, у якій лежить тільки сам
+     * `<input>`, тож `top-1/2` завжди точний. Тип поля лишається
+     * `type="password"` — перемикає його поле, а не форма.
+     */
+    const isPasswordType = type === 'password'
+    const [isRevealed, setRevealed] = useState(false)
+    const resolvedType = isPasswordType && isRevealed ? 'text' : type
 
     const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>, onChange: (value: string | number) => void) => {
         let value = e.target.value
@@ -56,7 +85,14 @@ const Input = <T extends FieldValues, >({control, name, rules, label, type = 'te
 
     return (
         <div className={cn('w-auto', classNameContainer)}>
-            {!!label && <label htmlFor={id} className={"text-xs font-semibold text-gray-600 ml-4 min-h-5 text-react/300"}>{label}</label>}
+            {!!label && (
+                <span className="ml-4 flex min-h-5 items-center gap-1.5">
+                    <label htmlFor={id} className="text-xs font-semibold text-muted-foreground">
+                        {label}
+                    </label>
+                    {hint && <Hint title={label}>{hint}</Hint>}
+                </span>
+            )}
             <Controller
                 name={name}
                 control={control}
@@ -70,9 +106,15 @@ const Input = <T extends FieldValues, >({control, name, rules, label, type = 'te
                                         id={id}
                                         className={cn(
                                             'min-h-[210px]',
-                                            "resize-none px-4 py-2 h-[100px] font-medium text-black rounded-3xl border-2 outline-none focus:ring-0 text-base w-full focus:border-2 focus:border-react/300 scrollbar-hide",
-                                            fieldState.error && "border-2 border-red/600 focus:border-2 focus:border-red/600",
-                                            !fieldState.error && "border-2 border-white/600",
+                                            // text-black на темному тлі був нечитабельним ще до зміни теми
+                                            'resize-none w-full scrollbar-hide px-4 py-2 h-[100px] text-base font-medium',
+                                            // Класи з shared/ui/input.tsx проєкту dashboard:
+                                            // прозорий фон і рамка border-input, кільце на фокусі.
+                                            'rounded-md border border-input bg-transparent text-foreground shadow-xs',
+                                            'placeholder:text-muted-foreground/70 outline-none transition-[color,box-shadow]',
+                                            'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                                            'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
+                                            fieldState.error && 'border-destructive-foreground focus-visible:ring-destructive/40',
                                             className,
                                         )}
                                         {...field}
@@ -89,17 +131,26 @@ const Input = <T extends FieldValues, >({control, name, rules, label, type = 'te
                                 ) : (
                                     <input
                                         id={id}
-                                        type={type}
+                                        type={resolvedType}
                                         {...field}
                                         ref={(el) => {
                                             field.ref(el);
                                             inputRef?.(el);
                                         }}
                                         className={cn(
-                                            'px-4 min-h-[40px] font-medium text-black rounded-[12px] border-2 outline-none focus:ring-0 text-base w-full text-ellipsis border-react/500 focus:border-react/300 bg-react/500 duration-300',
-                                            // !fieldState.error && 'border-2 border-white/600',
-                                            fieldState.error && 'border-2 border-red/600 focus:border-2 focus:border-red/500',
+                                            'w-full min-h-[40px] px-4 text-base font-medium text-ellipsis duration-300',
+                                            // Класи з shared/ui/input.tsx проєкту dashboard:
+                                            // прозорий фон і рамка border-input, кільце на фокусі.
+                                            'rounded-md border border-input bg-transparent text-foreground shadow-xs',
+                                            'placeholder:text-muted-foreground/70 outline-none transition-[color,box-shadow]',
+                                            'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                                            'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
+                                            fieldState.error && 'border-destructive-foreground focus-visible:ring-destructive/40',
                                             (isPhoneType || img) && 'pr-10',
+                                            // Місце під одиницю: без цього довге число заповзає під «мм»
+                                            unit && 'pr-12',
+                                            // Те саме під «око»: пароль інакше заїжджає під кнопку
+                                            isPasswordType && 'pr-11',
                                             className
                                         )}
                                         {...props}
@@ -120,7 +171,33 @@ const Input = <T extends FieldValues, >({control, name, rules, label, type = 'te
                                             if (onBlur) onBlur(e)
                                         }}
                                     />)}
-                                {/*// <Image src={(fieldState.error && icon.error) || img || icon.phoneMobile} alt={'icon'} className={'absolute top-3.5 right-5'}/>}*/}
+
+                                {/*
+                                  * `pointer-events-none` — щоб клік по «мм»
+                                  * ставив курсор у поле, а не провалювався
+                                  * повз нього
+                                  */}
+                                {unit && !isTextarea && (
+                                    <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                                        {unit}
+                                    </span>
+                                )}
+
+                                {isPasswordType && !isTextarea && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setRevealed(prev => !prev)}
+                                        aria-label={isRevealed ? 'Сховати пароль' : 'Показати пароль'}
+                                        // `tabIndex={-1}`: Tab із поля має вести до наступного
+                                        // поля форми, а не до кнопки показу
+                                        tabIndex={-1}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-muted-foreground transition-colors hover:text-foreground"
+                                    >
+                                        {isRevealed
+                                            ? <EyeOff className="h-[18px] w-[18px]" />
+                                            : <Eye className="h-[18px] w-[18px]" />}
+                                    </button>
+                                )}
 
                             </div>
                             {/*{fieldState.error && (*/}

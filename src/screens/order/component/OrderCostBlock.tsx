@@ -1,7 +1,12 @@
-import React, {FC, useState} from 'react';
-import {ChevronDown} from 'lucide-react';
-import {cn} from '@/helpers/cn';
-import {IConstruction} from '@/screens/construction/type/construction/IConstruction';
+import React, { FC, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
+
+import { cn } from '@/helpers/cn';
+import Hint from '@/ui/hint/Hint';
+import { useAuthStore } from '@/store/auth/authReducer';
+import { isDealerRole } from '@/config/RoleEnum';
+import { SectionLabel } from '@/ui/section-label/SectionLabel';
+import { IConstruction } from '@/screens/construction/type/construction/IConstruction';
 import {
     IOrderCost,
     IOrderCostConstructionGroup,
@@ -16,255 +21,266 @@ interface OrderCostBlockProps {
     constructions?: IConstruction[];
 }
 
-const OrderCostBlock: FC<OrderCostBlockProps> = ({cost, constructions}) => {
-    const [isOpen, setIsOpen] = useState(false);
+/**
+ * Ціна двома валютами — однаковим виглядом у всіх рядках.
+ *
+ * Гривня в рядках із копійками, у підсумку — округлена.
+ *
+ * Раніше вона всюди йшла цілою, і копійки просто зникали: рядок за 1.40 $ і
+ * рядок за 1.44 $ показували однакові «58 ₴». Скласти такі рядки очима було
+ * неможливо — сума не сходилась із підсумком, і виглядало це як помилка
+ * розрахунку, хоч рахунок був правильний.
+ *
+ * У підсумку копійки навпаки зайві: там дивляться на порядок суми, а не
+ * звіряють доданки.
+ */
+const Money: FC<{ usd: number; uah: number; className?: string; rounded?: boolean }> = ({
+    usd,
+    uah,
+    className,
+    rounded = false,
+}) => (
+    <span className={cn('shrink-0 whitespace-nowrap tabular-nums', className)}>
+        {usd.toFixed(2)} $
+        <span className="text-muted-foreground"> / {uah.toFixed(rounded ? 0 : 2)} ₴</span>
+    </span>
+);
+
+/**
+ * Витрата профілю двома числами.
+ *
+ * `beamsUsed` — скільки прутків фізично взято за розкроєм, тобто вже
+ * округлення вгору: пруток або дістали зі складу, або ні. Але платить
+ * замовник не за прутки, а за метраж — сума рахується як
+ * `довжина деталей / довжина балки * ціна`, і це майже завжди дробове
+ * число. Показувати лише ціле означало б, що сума не сходиться з
+ * кількістю: три прутки поруч із ціною за 2.067.
+ *
+ * `beamLength` беремо з рядка вартості, а не з довідника матеріалів: у
+ * довіднику довжину можуть змінити, і старе замовлення почало б показувати
+ * витрату, якої в ньому не було.
+ */
+const BeamUsage: FC<{ item: IOrderCostItem; isDealer: boolean }> = ({ item, isDealer }) => {
+    const fractional = item.beamLength > 0 ? item.totalLength / item.beamLength : 0;
+
+    /*
+     * Дилеру — лише фактична витрата.
+     *
+     * «1 шт» — це складський рух: скільки прутків дістали з полиці, щоб
+     * нарізати його деталі. Замовника це не стосується й нічого йому не
+     * пояснює: платить він за 0.615 балки, і два числа поруч читались як
+     * розбіжність у рахунку. Залишок в обріз — теж внутрішня втрата заводу.
+     */
+    if (isDealer) {
+        /*
+         * Без підказки: пояснювати тут нічого. Число одне, поруч із ним ціна,
+         * і зв'язок між ними очевидний. Іконка «i» була потрібна, поки поруч
+         * стояли два різні числа й треба було сказати, чим вони відрізняються.
+         */
+        return (
+            <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground">
+                {fractional.toFixed(3)} балки
+            </span>
+        );
+    }
+
+    return (
+        <span className="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground">
+            {item.beamsUsed} шт
+            <span className="text-muted-foreground/60">·</span>
+            {fractional.toFixed(3)}
+            <Hint title="Витрата профілю">
+                <p>
+                    <b>{item.beamsUsed} шт</b> — стільки прутків беремо зі складу за
+                    розкроєм: пруток не можна взяти наполовину.
+                </p>
+                <p>
+                    <b>{fractional.toFixed(3)}</b> — стільки балок пішло насправді:{' '}
+                    {item.totalLength.toFixed(0)} мм деталей поділити на балку{' '}
+                    {item.beamLength.toFixed(0)} мм. Саме за цим числом нарахована сума.
+                </p>
+                <p>Залишок у обріз: {item.wasteLength.toFixed(0)} мм.</p>
+            </Hint>
+        </span>
+    );
+};
+
+/**
+ * Вартість замовлення.
+ *
+ * Блок був зроблений під світлу тему й повністю на inline-стилях: білі
+ * підкладки, градієнт `#EFF6FF`, синій `#3B82F6` під білим текстом, рамка
+ * `#DBEAFE`. На темному фоні це виглядало як шматок чужого інтерфейсу, а
+ * дізнатися колір із коду можна було лише вичитуючи шістнадцяткові значення.
+ * Тепер усе на токенах теми.
+ *
+ * Зовнішнє згортання прибрано: блок і так відкривається окремою вкладкою,
+ * тож перший клік просто відкривав те, заради чого на вкладку й переходили.
+ */
+const OrderCostBlock: FC<OrderCostBlockProps> = ({ cost, constructions }) => {
     const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
 
-    const toggleGroup = (id: number) => {
+    const { role } = useAuthStore();
+    const isDealer = isDealerRole(role);
+
+    const toggleGroup = (id: number) =>
         setExpandedGroups(prev => {
             const next = new Set(prev);
             next.has(id) ? next.delete(id) : next.add(id);
             return next;
         });
-    };
 
     return (
-        <div className="mb-2 rounded-xl overflow-hidden"
-             style={{border: '1.5px solid #DBEAFE', boxShadow: '0 2px 8px rgba(59,130,246,0.08)'}}>
+        <div className="flex flex-col gap-3">
 
-            <button
-                onClick={() => setIsOpen(p => !p)}
-                className="w-full flex items-center justify-between px-4 py-3 transition-colors"
-                style={{
-                    background: 'linear-gradient(90deg, #EFF6FF 0%, #F8FBFF 100%)',
-                    borderBottom: isOpen ? '1px solid #DBEAFE' : undefined,
-                }}
-            >
-                <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                         style={{background: '#3B82F6'}}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                             stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-                            <path d="M2 17l10 5 10-5"/>
-                            <path d="M2 12l10 5 10-5"/>
-                        </svg>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold" style={{color: '#1E40AF'}}>
-                            Вартість замовлення
-                        </span>
-                        <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
-                              style={{background: '#3B82F6', color: '#fff'}}>
-                            {cost.totalUsd.toFixed(2)} $ / {cost.totalUah.toFixed(0)} ₴
-                        </span>
-                    </div>
-                </div>
-                <ChevronDown
-                    size={15}
-                    className={cn("transition-transform duration-200", isOpen && "rotate-180")}
-                    style={{color: '#3B82F6'}}
-                />
-            </button>
+            {/* ── профілі ─────────────────────────────────────────────── */}
+            {cost.items.length > 0 && (
+                <div className="overflow-hidden rounded-xl border border-border bg-card">
+                    <SectionLabel>Профілі</SectionLabel>
 
-            {isOpen && (
-                <div className="p-4 space-y-3">
-
-                    {cost.items.length > 0 && (
-                        <div className="rounded-lg border-2 border-blue-300 overflow-hidden bg-white">
+                    <div className="divide-y divide-border">
+                        {cost.items.map((item: IOrderCostItem) => (
                             <div
-                                className="px-3 py-2.5"
-                                style={{background: '#1D4ED8'}}
+                                key={item.id}
+                                className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-accent/40"
                             >
-                                <p className="text-xs font-bold text-white uppercase tracking-wide">
-                                    Профілі
-                                </p>
-                            </div>
-                            <div className="divide-y divide-blue-200">
-                                {cost.items.map((item: IOrderCostItem) => (
-                                    <div
-                                        key={item.id}
-                                        className="flex justify-between items-center px-3 py-2.5 text-xs hover:bg-blue-50 transition-colors bg-white"
-                                    >
-                                        <div className="flex items-center gap-2 min-w-0">
-                                            <span className="font-bold text-gray-900 truncate">
-                                                {item.articleCode}
-                                            </span>
-                                            <span className="text-gray-500 font-medium">({item.color})</span>
-                                            <span
-                                                className="px-2 py-1 rounded font-bold text-xs shrink-0"
-                                                style={{background: '#3B82F6', color: '#fff'}}
-                                            >
-                                                {item.beamsUsed} шт
-                                            </span>
-                                        </div>
-                                        <span className="font-bold text-gray-900 shrink-0 ml-2 text-blue-600">
-                                            {item.subtotalUsd.toFixed(2)} $ / {item.subtotalUah.toFixed(0)} ₴
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {cost.byConstruction?.map((group: IOrderCostConstructionGroup) => {
-                        const construction = constructions?.find(c => c.id === group.constructionId);
-                        const isExpanded = expandedGroups.has(group.constructionId);
-                        const totalItems =
-                            group.glassItems.length +
-                            group.accessoryItems.length +
-                            group.serviceItems.length;
-
-                        return (
-                            <div
-                                key={group.constructionId}
-                                className="rounded-lg border-2 border-blue-300 overflow-hidden bg-white"
-                            >
-                                <button
-                                    onClick={() => toggleGroup(group.constructionId)}
-                                    className="w-full flex items-center justify-between px-3 py-3 transition-colors hover:bg-blue-50 bg-white"
-                                    style={{
-                                        background: isExpanded ? '#1D4ED8' : 'white',
-                                    }}
-                                >
-                                    <div className="flex items-center gap-2 min-w-0">
-                                        <ChevronDown
-                                            size={16}
-                                            className={cn(
-                                                'transition-transform duration-200 shrink-0 font-bold',
-                                                isExpanded ? 'rotate-180 text-white' : 'text-gray-600'
-                                            )}
-                                        />
-                                        <span
-                                            className="text-xs font-bold truncate"
-                                            style={{color: isExpanded ? '#fff' : '#1E3A8A'}}
-                                        >
-                                              {construction
-                                                  ? `Конструкція ${construction.constructionNo} · ${construction.width}×${construction.height} мм`
-                                                  : `Конструкція #${group.constructionId}`}
-                                        </span>
-                                        {totalItems > 0 && (
-                                            <span
-                                                className="text-[10px] px-2 py-1 rounded font-bold shrink-0"
-                                                style={{
-                                                    background: isExpanded
-                                                        ? 'rgba(255,255,255,0.3)'
-                                                        : '#E0E7FF',
-                                                    color: isExpanded ? '#fff' : '#1E3A8A',
-                                                }}
-                                            >
-                                                {totalItems} позицій
-                                            </span>
-                                        )}
-                                    </div>
-                                    <span
-                                        className="text-xs font-bold shrink-0 ml-2"
-                                        style={{color: isExpanded ? '#fff' : '#1E40AF'}}
-                                    >
-                                        {group.subtotalUsd.toFixed(2)} $ / {group.subtotalUah.toFixed(0)} ₴
-                                    </span>
-                                </button>
-
-                                {isExpanded && (
-                                    <div className="divide-y divide-blue-200 bg-white">
-                                        {group.glassItems.length > 0 && (
-                                            <div
-                                                className="px-3 py-3 space-y-1.5 border-l-4 border-purple-500 bg-white">
-                                                <p className="text-[11px] font-bold text-purple-700 uppercase tracking-wide">
-                                                    🔷 Скло
-                                                </p>
-                                                {group.glassItems.map((item: IOrderCostGlassItem) => (
-                                                    <div
-                                                        key={item.id}
-                                                        className="flex justify-between text-xs text-gray-700 font-medium"
-                                                    >
-                                                        <span className="truncate flex-1">{item.name}</span>
-                                                        <span className="shrink-0 ml-2 text-purple-600 font-bold">
-                              {item.subtotalUsd.toFixed(2)} $ / {item.subtotalUah.toFixed(0)} ₴
-                            </span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-
-                                        {group.accessoryItems.length > 0 && (
-                                            <div className="px-3 py-3 space-y-1.5 border-l-4 border-blue-500 bg-white">
-                                                <p className="text-[11px] font-bold text-blue-700 uppercase tracking-wide">
-                                                    🔩 Аксесуари
-                                                </p>
-                                                {group.accessoryItems.map((item: IOrderCostAccessoryItem) => (
-                                                    <div
-                                                        key={item.id}
-                                                        className="flex justify-between text-xs text-gray-700 font-medium"
-                                                    >
-                                                        <span className="truncate flex-1">
-                                                            {item.name}
-                                                            {item.color && `(${item.color})`} × {item.quantity}
-                                                        </span>
-                                                        <span className="shrink-0 ml-2 text-blue-600 font-bold">
-                                                            {item.subtotalUsd.toFixed(2)} $ / {item.subtotalUah.toFixed(0)} ₴
-                                                        </span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-
-                                        {group.serviceItems.length > 0 && (
-                                            <div
-                                                className="px-3 py-3 space-y-1.5 border-l-4 border-emerald-500 bg-white">
-                                                <p className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide">
-                                                    ✓ Послуги
-                                                </p>
-                                                {group.serviceItems.map((item: IOrderCostServiceItem) => (
-                                                    <div
-                                                        key={item.id}
-                                                        className="flex justify-between text-xs text-gray-700 font-medium"
-                                                    >
-                                                        <span className="truncate flex-1">{item.name}</span>
-                                                        <span className="shrink-0 ml-2 text-emerald-600 font-bold">
-                                                           {item.subtotalUsd.toFixed(2)} $ / {item.subtotalUah.toFixed(0)} ₴
-                                                        </span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-
-                                        <div
-                                            className="flex justify-between px-3 py-2.5 text-xs font-bold text-white"
-                                            style={{background: '#1D4ED8'}}
-                                        >
-                                            <span>Підсумок</span>
-                                            <span>
-                                                {group.subtotalUsd.toFixed(2)} $ / {group.subtotalUah.toFixed(0)} ₴
-                                            </span>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
-
-                    <div className="rounded-lg border-2 border-blue-400 overflow-hidden bg-white">
-                        <div className="divide-y divide-blue-200">
-                            <div className="flex justify-between items-center px-4 py-3 bg-white">
-                                <span className="text-sm font-bold text-gray-900">Разом</span>
-                                <div className="text-right">
-                                    <p className="text-sm font-bold text-gray-900">
-                                        {cost.totalUsd.toFixed(2)} $ / {cost.totalUah.toFixed(0)} ₴
-                                    </p>
+                                <div className="flex min-w-0 items-center gap-2">
+                                    <span className="truncate font-mono text-foreground">{item.articleCode}</span>
+                                    {item.color && (
+                                        <span className="truncate text-muted-foreground">({item.color})</span>
+                                    )}
+                                    <BeamUsage item={item} isDealer={isDealer} />
                                 </div>
-                            </div>
-                            <div className="flex justify-between items-center px-3 py-2 text-xs text-gray-400">
-                                <span>Курс НБУ</span>
-                                <span>1 $ = {cost.currencyRate.toFixed(2)} ₴</span>
-                            </div>
-                        </div>
-                    </div>
 
+                                <Money usd={item.subtotalUsd} uah={item.subtotalUah} className="text-foreground" />
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
+
+            {/* ── по конструкціях ─────────────────────────────────────── */}
+            {cost.byConstruction?.map((group: IOrderCostConstructionGroup) => {
+                const construction = constructions?.find(c => c.id === group.constructionId);
+                const isExpanded = expandedGroups.has(group.constructionId);
+                const totalItems =
+                    group.glassItems.length + group.accessoryItems.length + group.serviceItems.length;
+
+                return (
+                    <div
+                        key={group.constructionId}
+                        className="overflow-hidden rounded-xl border border-border bg-card"
+                    >
+                        <button
+                            onClick={() => toggleGroup(group.constructionId)}
+                            className="flex w-full items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-accent/40"
+                        >
+                            <div className="flex min-w-0 items-center gap-2">
+                                <ChevronDown
+                                    size={16}
+                                    className={cn(
+                                        'shrink-0 text-muted-foreground transition-transform duration-200',
+                                        isExpanded && 'rotate-180',
+                                    )}
+                                />
+
+                                <span className="truncate text-sm font-medium text-foreground">
+                                    {construction
+                                        ? `Конструкція ${construction.constructionNo} · ${construction.width}×${construction.height} мм`
+                                        : `Конструкція #${group.constructionId}`}
+                                </span>
+
+                                {totalItems > 0 && (
+                                    <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground">
+                                        {totalItems} позицій
+                                    </span>
+                                )}
+                            </div>
+
+                            <Money
+                                usd={group.subtotalUsd}
+                                uah={group.subtotalUah}
+                                className="text-sm font-medium text-foreground"
+                                rounded
+                            />
+                        </button>
+
+                        {isExpanded && (
+                            <div className="divide-y divide-border border-t border-border">
+                                {group.glassItems.length > 0 && (
+                                    <CostGroup label="Скло">
+                                        {group.glassItems.map((item: IOrderCostGlassItem) => (
+                                            <CostRow key={item.id} name={item.name} usd={item.subtotalUsd} uah={item.subtotalUah} />
+                                        ))}
+                                    </CostGroup>
+                                )}
+
+                                {group.accessoryItems.length > 0 && (
+                                    <CostGroup label="Аксесуари">
+                                        {group.accessoryItems.map((item: IOrderCostAccessoryItem) => (
+                                            <CostRow
+                                                key={item.id}
+                                                name={`${item.name}${item.color ? ` (${item.color})` : ''} × ${item.quantity}`}
+                                                usd={item.subtotalUsd}
+                                                uah={item.subtotalUah}
+                                            />
+                                        ))}
+                                    </CostGroup>
+                                )}
+
+                                {group.serviceItems.length > 0 && (
+                                    <CostGroup label="Послуги">
+                                        {group.serviceItems.map((item: IOrderCostServiceItem) => (
+                                            <CostRow key={item.id} name={item.name} usd={item.subtotalUsd} uah={item.subtotalUah} />
+                                        ))}
+                                    </CostGroup>
+                                )}
+
+                                <div className="flex items-center justify-between gap-3 bg-accent/40 px-4 py-2.5 text-sm font-medium text-foreground">
+                                    <span>Підсумок</span>
+                                    <Money usd={group.subtotalUsd} uah={group.subtotalUah} rounded />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
+
+            {/* ── разом ───────────────────────────────────────────────── */}
+            <div className="overflow-hidden rounded-xl border border-border bg-card">
+                <div className="flex items-center justify-between gap-3 px-4 py-3">
+                    <span className="text-sm font-semibold text-foreground">Разом</span>
+                    <Money usd={cost.totalUsd} uah={cost.totalUah} className="text-base font-semibold text-foreground" rounded />
+                </div>
+
+                <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-2 text-xs text-muted-foreground">
+                    <span>Курс НБУ</span>
+                    <span className="tabular-nums">1 $ = {cost.currencyRate.toFixed(2)} ₴</span>
+                </div>
+            </div>
         </div>
     );
 };
+
+/**
+ * Група всередині розкладу конструкції.
+ *
+ * Кольори прибрані: фіолетовий, синій і зелений нічого не означали — це просто
+ * три назви розділів, — але читалися помітніше за суми поруч. Виділяє групу
+ * нейтральна підкладка підпису, тож рядки під ним видно як одне ціле.
+ */
+const CostGroup: FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+    <div>
+        <SectionLabel>{label}</SectionLabel>
+        <div className="flex flex-col gap-0.5 px-4 py-2.5">{children}</div>
+    </div>
+);
+
+const CostRow: FC<{ name: string; usd: number; uah: number }> = ({ name, usd, uah }) => (
+    <div className="flex justify-between gap-3 text-sm">
+        <span className="min-w-0 flex-1 truncate text-muted-foreground">{name}</span>
+        <Money usd={usd} uah={uah} className="text-foreground" />
+    </div>
+);
 
 export default OrderCostBlock;

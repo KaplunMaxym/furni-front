@@ -16,8 +16,15 @@ export interface IProfileMaterialPriceForm {
     pricePerBeam: number;
 }
 
+export interface IProfileMaterialQuery extends IQueryPagination {
+    /** Збіг за назвою, артикулом або кодом 1С. */
+    search?: string;
+    colorId?: number;
+    profileSystemId?: number;
+}
+
 export const ProfileMaterialService = {
-    getProfileMaterials: (params: IQueryPagination) =>
+    getProfileMaterials: (params: IProfileMaterialQuery) =>
         instance({ url: getProfileMaterialUrl(), method: 'GET', params }),
 
     getProfileMaterialsSimple: () =>

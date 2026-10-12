@@ -2,10 +2,175 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Дві теми в одному місці.
+ *
+ * Кольори лежать змінними, а не значеннями в tailwind.config: конфіг
+ * збирається один раз на етапі складання, тож зашиті в нього шістнадцяткові
+ * числа перемкнути в браузері неможливо. Змінна ж читається в момент
+ * малювання — досить перевісити клас `dark` на <html>, і вся сторінка
+ * перефарбовується без перезбирання й без перезавантаження.
+ *
+ * Значення — канали без `rgb()` навмисно. Tailwind підставляє їх у
+ * `rgb(var(--x) / <alpha-value>)`, і завдяки цьому працюють модифікатори
+ * прозорості: `bg-accent/40`, `ring-ring/50`, `bg-destructive/15`. Якби
+ * змінна містила готовий `#18181B`, кожен такий клас мовчки перестав би
+ * фарбувати — а їх у проєкті сотні.
+ *
+ * Темна — та сама палітра dashboard, що була досі. Світла зібрана з нею в
+ * пару: ті самі ролі, дзеркальна яскравість.
+ */
+:root {
+  --background: 255 255 255;
+  --foreground: 9 9 11;
+
+  --card: 255 255 255;
+  --card-foreground: 9 9 11;
+  --popover: 255 255 255;
+  --popover-foreground: 9 9 11;
+
+  --primary: 24 24 27;
+  --primary-foreground: 250 250 250;
+
+  --secondary: 244 244 245;
+  --secondary-foreground: 24 24 27;
+
+  --muted: 244 244 245;
+  --muted-foreground: 113 113 122;
+
+  --accent: 244 244 245;
+  --accent-foreground: 24 24 27;
+
+  /* Червоний світлої теми темніший: на білому яскравий #E7000B «дзвенить» */
+  --destructive: 220 38 38;
+  --destructive-foreground: 185 28 28;
+
+  --border: 228 228 231;
+  --input: 228 228 231;
+  --ring: 161 161 170;
+
+  /* Проміжна поверхня: підкладки чипів і панелей, світліша за фон картки */
+  --surface: 244 244 245;
+  /* Текст поверх кольорових плашок — світлий в обох темах */
+  --on-accent: 250 250 250;
+
+  --scrollbar-thumb: 212 212 216;
+  --scrollbar-thumb-hover: 161 161 170;
+
+  --chart-1: 20 71 230;
+  --chart-2: 0 188 125;
+  --chart-3: 254 154 0;
+  --chart-4: 173 70 255;
+  --chart-5: 255 32 87;
+}
+
+.dark {
+  --background: 9 9 11;
+  --foreground: 250 250 250;
+
+  --card: 9 9 11;
+  --card-foreground: 250 250 250;
+  --popover: 9 9 11;
+  --popover-foreground: 250 250 250;
+
+  --primary: 250 250 250;
+  --primary-foreground: 24 24 27;
+
+  --secondary: 39 39 42;
+  --secondary-foreground: 250 250 250;
+
+  --muted: 24 24 27;
+  --muted-foreground: 142 142 149;
+
+  --accent: 24 24 27;
+  --accent-foreground: 250 250 250;
+
+  --destructive: 130 24 26;
+  --destructive-foreground: 231 0 11;
+
+  --border: 39 39 42;
+  --input: 39 39 42;
+  --ring: 82 82 92;
+
+  --surface: 24 24 27;
+  --on-accent: 250 250 250;
+
+  --scrollbar-thumb: 63 63 70;
+  --scrollbar-thumb-hover: 82 82 92;
+
+  --chart-1: 20 71 230;
+  --chart-2: 0 188 125;
+  --chart-3: 254 154 0;
+  --chart-4: 173 70 255;
+  --chart-5: 255 32 87;
+}
+
+/*
+ * Базові правила з проєкту dashboard.
+ *
+ * Рамка за замовчуванням: theme.colors тут замінює дефолтну палітру Tailwind,
+ * тому клас `border` без явного кольору малювався currentColor — тобто
+ * кольором тексту. Саме звідси бралися білі обводки навколо елементів.
+ */
+@layer base {
+  * {
+    border-color: rgb(var(--border));
+  }
+}
+
+/*
+ * Смуга прокрутки під тему.
+ *
+ * Стандартна у Windows світла й широка — на темному фоні вона різала око
+ * сильніше за будь-який елемент інтерфейсу. Firefox розуміє лише
+ * scrollbar-width і scrollbar-color, решта браузерів — ::-webkit-scrollbar.
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--scrollbar-thumb)) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+/* Стрілки на кінцях: у Chromium вони вмикаються самі, коли смузі задано
+   власні розміри, і виглядають як два обрубки над і під повзунком */
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgb(var(--scrollbar-thumb));
+  border-radius: 999px;
+  /* Прозора рамка через background-clip лишає повзунок вужчим за доріжку,
+     не примушуючи звужувати саму смугу — інакше в нього важко влучити */
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(var(--scrollbar-thumb-hover));
+}
+
+/* Куточок між вертикальною й горизонтальною смугами: без цього він
+   лишається світлим прямокутником у темній темі */
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 body {
   margin: 0;
   padding: 0;
-  background: #2b303b;
+  /* Картки відділяються від сторінки рамкою, а не світлішим тлом —
+     тому фон сторінки й фон картки збігаються в обох темах. */
+  background: rgb(var(--background));
+  color: rgb(var(--foreground));
   height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -71,3 +236,21 @@ input:-webkit-autofill {
   transition-property: background-color, color;
 }
 
+/*
+ * Стрілки в числових полях.
+ *
+ * Chrome малює їх у правому краю поля — рівно там, де в нас стоїть підпис
+ * одиниці («°», «мм», «$»). Вони накладалися одне на одне, і замість підпису
+ * виходила обрізана кривуля. Числа тут скрізь вводять з клавіатури, а не
+ * клацанням по стрілках, тож прибираємо їх повністю.
+ */
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

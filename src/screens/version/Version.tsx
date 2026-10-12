@@ -1,13 +1,17 @@
 import React from "react";
 import MainLayout from "@/ui/layouts/main-layout/MainLatout";
-import Title from "@/ui/title/Title";
+import PageHeader from "@/ui/page-header/PageHeader";
+import packageJson from "@/../package.json";
 import {dataVersionInformation} from "./data/dataVersionInformation";
 import VersionInformationCard from "./features/versionInformationCard/VersionInformationCard";
 
 const Version = () => {
     return (
-        <MainLayout className={'items-center'}>
-            <Title className={'my-8'}>Furni version control</Title>
+        <MainLayout>
+            <PageHeader
+                title="Версія"
+                description={`Поточне складання застосунку — v${packageJson.version}`}
+            />
             {/*<div className={'flex flex-col gap-5 max-w-[1060px]'}>*/}
             {/*    {dataVersionInformation.map((item, index) =>*/}
             {/*        <VersionInformationCard key={index} {...item} />)*/}

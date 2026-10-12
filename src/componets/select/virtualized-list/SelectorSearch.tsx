@@ -209,9 +209,9 @@ const SelectorSearch = <T,>({options, optionValue, hasError = false, optionLabel
                 width: dropdownPosition.width,
                 zIndex: 9999
             }}
-            className="bg-white text-black rounded-[12px] max-h-[200px] overflow-auto"
+            className="max-h-[240px] overflow-auto rounded-md border border-input bg-popover p-1 text-popover-foreground shadow-lg"
         >
-            <div className="max-h-[200px] overflow-y-auto border border-react/400">
+            <div>
                 {allowClear && placeholder && (
                     <div
                         onMouseDown={e => {
@@ -219,15 +219,16 @@ const SelectorSearch = <T,>({options, optionValue, hasError = false, optionLabel
                             handleClear(e);
                         }}
                         className={cn(
-                            'px-3 py-2 text-sm text-white/600 bg-react/500 hover:bg-react/400 cursor-pointer border-b border-react/400',
-                            (!state || state === null) && 'bg-react/400 font-semibold'
+                            'relative flex w-full cursor-pointer select-none items-center rounded px-2 py-1.5 text-sm outline-none',
+                            'hover:bg-accent hover:text-accent-foreground',
+                            (!state || state === null) && 'bg-accent text-accent-foreground'
                         )}
                     >
                         {placeholder}
                     </div>
                 )}
                 {!filteredOptions.length && (
-                    <div className="px-3 py-2 text-sm bg-react/500 text-white/600">Nothing found</div>
+                    <div className="px-2.5 py-2 text-sm text-muted-foreground">Нічого не знайдено</div>
                 )}
                 {filteredOptions.map((option, i) => (
                     <div
@@ -237,8 +238,9 @@ const SelectorSearch = <T,>({options, optionValue, hasError = false, optionLabel
                             handleSelect(option);
                         }}
                         className={cn(
-                            'px-3 py-2 text-sm text-white/600 bg-react/500 hover:bg-react/400 cursor-pointer',
-                            String(getOptionValue(option)) === String(state) && 'bg-react/400 font-semibold'
+                            'relative flex w-full cursor-pointer select-none items-center rounded px-2 py-1.5 text-sm outline-none',
+                            'hover:bg-accent hover:text-accent-foreground',
+                            String(getOptionValue(option)) === String(state) && 'bg-accent text-accent-foreground'
                         )}
                     >
                         {String(getOptionLabel(option))}
@@ -252,9 +254,10 @@ const SelectorSearch = <T,>({options, optionValue, hasError = false, optionLabel
         <div
             ref={wrapperRef}
             {...rest}
+            onClick={e => e.stopPropagation()}
             className={cn('relative flex flex-col gap-[5px] h-fit', className)}
         >
-            {!!label && <p className="text-xs font-semibold text-gray-600 ml-4 min-h-5 text-react/300">{label}</p>}
+            {!!label && <p className="text-xs font-semibold ml-4 min-h-5 text-muted-foreground">{label}</p>}
 
             <div className="relative">
                 <input
@@ -266,10 +269,12 @@ const SelectorSearch = <T,>({options, optionValue, hasError = false, optionLabel
                     placeholder={placeholder}
                     readOnly={!searchable}
                     className={cn(
-                        'px-4 h-[40px] font-medium rounded-[12px] outline-none text-base bg-react/500 w-full pr-10',
-                        !state && !isBlackDefault && 'text-react/300',
+                        'h-9 w-full rounded-md px-3 py-2 pr-9 text-sm shadow-xs outline-none',
+                        'border border-input bg-transparent text-foreground transition-[color,box-shadow]',
+                        'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                        !state && !isBlackDefault && 'text-muted-foreground',
                         searchable ? 'cursor-text' : 'cursor-pointer',
-                        hasError && 'border-2 border-red/500'
+                        hasError && 'border-destructive-foreground'
                     )}
                 />
                 <img

@@ -10,8 +10,13 @@ import {
 import {IGlassFillForm} from "@/screens/glass-fill/types/IGlassFillForm";
 import {IGlassPriceForm} from "@/screens/glass-fill/types/IGlassPriceForm";
 
+export interface IGlassFillQueryParams extends IQueryPagination {
+    /** Збіг за назвою скла або кодом 1С. */
+    search?: string;
+}
+
 export const GlassFillService = {
-    getGlassFill: (params: IQueryPagination) =>
+    getGlassFill: (params: IGlassFillQueryParams) =>
         instance({
             url: getGlassFillUrl(),
             method: 'GET',

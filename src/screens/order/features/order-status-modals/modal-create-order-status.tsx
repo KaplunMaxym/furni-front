@@ -8,11 +8,11 @@ import Input from "@/ui/input/Input";
 import {useForm} from "react-hook-form";
 import Button from "@/ui/button/Button";
 import Loading from "@/ui/loading/Loading";
-import {IUserForm} from "@/screens/users/types/user/IUserForm";
 import {IOrderStatusForm} from "@/screens/order/types/order-status/IOrderStatusForm";
 import {useOrderStatusCreateMutation} from "@/screens/order/hooks/order-status/useOrderStatusCreateMutation";
 import {useOrderStatusUpdateMutation} from "@/screens/order/hooks/order-status/useOrderStatusUpdateMutation";
 import {IOrderStatus} from "@/screens/order/types/order-status/IOrderStataus";
+import { ToggleBtn } from "@/ui/toggles/toggle-btn";
 
 type IModalCreateOrderStatus = ModalProps & {
     orderStatus?: IOrderStatus | null;
@@ -21,10 +21,13 @@ type IModalCreateOrderStatus = ModalProps & {
 const OrderStatusCreateModal: FC<IModalCreateOrderStatus> = ({orderStatus, ...props}) => {
     const isEditMode = !!orderStatus;
 
-    const {control, handleSubmit, reset, formState: {errors}, setValue} = useForm<IOrderStatusForm>({
+    const {control, handleSubmit, trigger, reset, watch, formState: { errors, isValid }, setValue} = useForm<IOrderStatusForm>({
+        mode: 'onChange',
         defaultValues: {
             code: '',
-            title: ''
+            title: '',
+            // Новий статус за замовчуванням видимий: ховати — свідома дія
+            isVisibleToDealer: true
         }
     });
 
@@ -37,6 +40,7 @@ const OrderStatusCreateModal: FC<IModalCreateOrderStatus> = ({orderStatus, ...pr
         if (orderStatus && props.open) {
             setValue('code', orderStatus.code);
             setValue('title', orderStatus.title);
+            setValue('isVisibleToDealer', orderStatus.isVisibleToDealer ?? true);
         } else if (!orderStatus && props.open) {
             reset();
         }
@@ -48,6 +52,20 @@ const OrderStatusCreateModal: FC<IModalCreateOrderStatus> = ({orderStatus, ...pr
         }
     }, [props.open, reset]);
 
+    /**
+     * Кнопка збереження вимкнена, поки форма невалідна.
+     *
+     * У режимі редагування значення підставляються через `setValue`, а він не
+     * перераховує `isValid` — без явного `trigger` кнопка лишалась би сірою на
+     * вже заповненій формі. У режимі створення `trigger` не викликаємо: він би
+     * одразу підсвітив червоним усі порожні обов'язкові поля.
+     */
+    useEffect(() => {
+        if (props.open && isEditMode) void trigger();
+    }, [props.open, isEditMode, trigger]);
+
+    const isVisibleToDealer = watch('isVisibleToDealer');
+
     const onSubmit = async (data: IOrderStatusForm) => {
         try {
             if (isEditMode && orderStatus) {
@@ -55,6 +73,7 @@ const OrderStatusCreateModal: FC<IModalCreateOrderStatus> = ({orderStatus, ...pr
                     id: orderStatus.id,
                     code: data.code,
                     title: data.title,
+                    isVisibleToDealer: data.isVisibleToDealer,
                 };
                 await updateOrderStatus(updateData);
             } else {
@@ -71,14 +90,14 @@ const OrderStatusCreateModal: FC<IModalCreateOrderStatus> = ({orderStatus, ...pr
 
     return (
         <Modal {...props} className={cn(
-            'flex flex-col gap-2.5 max-w-[500px] min-h-10 rounded-base-mini mx-2 overflow-y-auto max-h-dvh h-auto',
+            'max-w-[500px]',
         )}
         >
             <Modal.Title className={'gap-2'} onClose={props.onClose}>
                 {isEditMode ? 'Редагувати статус замовлення' : 'Створити статус замовлення'}
             </Modal.Title>
 
-            <Modal.Body className={'flex flex-col gap-4 rounded-xl p-3'}>
+            <Modal.Body className={'flex flex-col gap-4'}>
                 <form onSubmit={handleSubmit(onSubmit)} className={'flex flex-col gap-4'}>
                     <div className={'relative flex flex-col gap-[5px] h-fit'}>
                         <p className="text-xs font-semibold pl-4">Код</p>
@@ -92,7 +111,7 @@ const OrderStatusCreateModal: FC<IModalCreateOrderStatus> = ({orderStatus, ...pr
                             }}
                         />
                         {errors.code && (
-                            <p className={'text-red-500 text-sm'}>{errors.code.message}</p>
+                            <p className={'text-destructive-foreground text-sm'}>{errors.code.message}</p>
                         )}
                     </div>
 
@@ -108,15 +127,25 @@ const OrderStatusCreateModal: FC<IModalCreateOrderStatus> = ({orderStatus, ...pr
                             }}
                         />
                         {errors.title && (
-                            <p className={'text-red-500 text-sm'}>{errors.title.message}</p>
+                            <p className={'text-destructive-foreground text-sm'}>{errors.title.message}</p>
                         )}
                     </div>
+
+                    <ToggleBtn
+                        useStateProps={[
+                            isVisibleToDealer,
+                            () => setValue('isVisibleToDealer', !isVisibleToDealer)
+                        ]}
+                        description="Вимкнено — дилер не побачить цей статус ні в списку своїх замовлень, ні у виборі"
+                    >
+                        Показувати дилеру
+                    </ToggleBtn>
 
                     <div className="flex gap-3 mt-4">
                         <Button
                             type="button"
                             onClick={props.onClose}
-                            color="red"
+                            color="blackNoneLine"
                             className="flex-1"
                             disabled={isPending}
                         >
@@ -126,7 +155,7 @@ const OrderStatusCreateModal: FC<IModalCreateOrderStatus> = ({orderStatus, ...pr
                             type="submit"
                             color="greenDarkgreen"
                             className="flex-1"
-                            disabled={isPending}
+                            disabled={isPending || !isValid}
                         >
                             {isEditMode ? 'Оновити статус' : 'Створити статус'}
                         </Button>

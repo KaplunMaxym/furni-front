@@ -8,7 +8,7 @@ interface IOnOffProps extends ComponentProps<'span'> {
 export const OnOff: FC<IOnOffProps> = ({className, isActive, ...props}) => {
     return (
         <span
-            className={cn('duration-300', isActive ? 'text-emerald/500' : 'text-red/500', className)}
+            className={cn('duration-300', isActive ? 'text-chart-2' : 'text-destructive-foreground', className)}
             {...props}
         >
             {isActive ? 'on' : 'off'}

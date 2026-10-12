@@ -42,9 +42,9 @@ const Selector = <T, >({options, optionValue, optionLabel, className, placeholde
 
     return (
         <div {...rest} className={cn('flex flex-col gap-[5px] relative h-fit cursor-pointer', className)}>
-            {!!label && <p className={'text-xs font-semibold pl-4'}>{label}</p>}
+            {!!label && <p className={'text-xs font-semibold pl-4 text-muted-foreground'}>{label}</p>}
             <img
-                className={'w-4 h-4 absolute right-3 rotate-90 bottom-[11px] fill-emerald/500 pointer-events-none'}
+                className={'w-4 h-4 absolute right-3 rotate-90 bottom-[11px] fill-muted-foreground pointer-events-none'}
                 src={Chevrone}
                 alt={'chevrone'}
             />
@@ -52,12 +52,14 @@ const Selector = <T, >({options, optionValue, optionLabel, className, placeholde
                 value={state !== null && state !== undefined ? String(state) : ''}
                 onChange={handleChange}
                 className={cn(
-                    'px-4 h-[40px] font-medium rounded-[12px] min-w-[80px] outline-none focus:ring-0 text-base w-full text-ellipsis bg-react/500 pr-10 appearance-none cursor-pointer',
-                    !state && !isBlackDefault && 'text-react/300',
+                    'h-9 min-w-[80px] w-full appearance-none cursor-pointer px-3 py-2 pr-9 text-sm text-ellipsis',
+                    'rounded-md border border-input bg-transparent text-foreground shadow-xs outline-none transition-[color,box-shadow]',
+                    'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                    !state && !isBlackDefault && 'text-muted-foreground',
                 )}
             >
                 {placeholder && (
-                    <option value={''} disabled={isEmptyValueDisable} className={'text-react/300'}>
+                    <option value={''} disabled={isEmptyValueDisable} className={'text-muted-foreground'}>
                         {placeholder}
                     </option>
                 )}

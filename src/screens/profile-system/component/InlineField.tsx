@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useForm } from "react-hook-form";
+import { Pencil } from "lucide-react";
 import Input from "@/ui/input/Input";
 
 export interface InlineFieldProps {
@@ -39,7 +40,9 @@ const InlineField: React.FC<InlineFieldProps> = ({ label, value, type = "text", 
 
     return (
         <div className="flex flex-row gap-4 items-center">
-            <span className="text-xs text-gray-400 uppercase tracking-wide">{label}</span>
+            {/* gray-400 / gray-800 / green-600 тут не працювали: theme.colors
+                замінює палітру Tailwind, і плоских ключів у ній немає */}
+            <span className="text-xs text-muted-foreground uppercase tracking-wide">{label}</span>
             {editing ? (
                 <div className="flex flex-row gap-2 items-center">
                     <Input
@@ -56,13 +59,13 @@ const InlineField: React.FC<InlineFieldProps> = ({ label, value, type = "text", 
                     <button
                         onClick={handleSave}
                         disabled={pending}
-                        className="text-xs px-2 py-1 bg-emerald/500 text-white rounded hover:bg-emerald/600 disabled:opacity-50 whitespace-nowrap"
+                        className="text-xs px-2 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 whitespace-nowrap"
                     >
                         Зберегти
                     </button>
                     <button
                         onClick={handleCancel}
-                        className="text-xs px-2 py-1 bg-red/600 font-bold rounded hover:bg-red/500 whitespace-nowrap"
+                        className="text-xs px-2 py-1 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 whitespace-nowrap"
                     >
                         Скасувати
                     </button>
@@ -72,13 +75,13 @@ const InlineField: React.FC<InlineFieldProps> = ({ label, value, type = "text", 
                     className="flex items-center gap-1 group cursor-pointer"
                     onClick={handleOpen}
                 >
-                    <span className="text-sm font-medium text-gray-800">
+                    <span className="text-sm font-medium text-foreground">
                         {value != null && value !== ""
                             ? `${value}${unit ? ` ${unit}` : ""}`
-                            : <span className="text-gray-400 italic">—</span>
+                            : <span className="text-muted-foreground italic">—</span>
                         }
                     </span>
-                    <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-green-600 ml-1">✎</span>
+                    <Pencil className="ml-1 h-3 w-3 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                 </div>
             )}
         </div>

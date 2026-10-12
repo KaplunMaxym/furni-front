@@ -16,8 +16,15 @@ export interface IProfileAccessoryPriceForm {
     pricePerUnit: number;
 }
 
+export interface IProfileAccessoryQuery extends IQueryPagination {
+    /** Збіг за назвою, артикулом або кодом 1С. */
+    search?: string;
+    colorId?: number;
+    profileSystemId?: number;
+}
+
 export const ProfileAccessoryService = {
-    getProfileAccessories: (params: IQueryPagination) =>
+    getProfileAccessories: (params: IProfileAccessoryQuery) =>
         instance({ url: getProfileAccessoryUrl(), method: 'GET', params }),
 
     getProfileAccessoriesSimple: () =>

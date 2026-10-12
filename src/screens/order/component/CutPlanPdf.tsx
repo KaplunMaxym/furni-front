@@ -14,7 +14,8 @@ Font.register({
 });
 
 const CONSTRUCTION_COLORS = ['#B5D4F4', '#9FE1CB', '#FAC775', '#F4C0D1', '#C0DD97', '#CECBF6'];
-const BEAM_LENGTH = 3000;
+/** Запасна довжина прутка — лише для розкроїв, порахованих до появи поля. */
+const BEAM_LENGTH_FALLBACK = 3000;
 
 const S = StyleSheet.create({
     page: {
@@ -69,17 +70,20 @@ const BarBlock: React.FC<{
 }> = ({ row, colorMap, constructions, cutNumberRef }) => {
     const { material, bar } = row;
     const totalLen = bar.pieces.reduce((s, p) => s + p.length, 0);
-    const remainderPct = (bar.remainder / BEAM_LENGTH) * 100;
+    // Довжина прутка своя в кожного матеріалу — жорсткі 3000 малювали
+    // чотириметровий профіль поза межами смуги
+    const beamLength = material.beamLength || BEAM_LENGTH_FALLBACK;
+    const remainderPct = (bar.remainder / beamLength) * 100;
 
     return (
         <View style={S.barBlock} wrap={false}>
             <T style={S.barLabel}>
-                {`${material.articleCode}${material.color ? ' (' + material.color + ')' : ''} — Пруток ${bar.barIndex + 1}/${material.bars.length}  •  ${totalLen.toFixed(0)} / ${BEAM_LENGTH} мм`}
+                {`${material.articleCode}${material.color ? ' (' + material.color + ')' : ''} — Пруток ${bar.barIndex + 1}/${material.bars.length}  •  ${totalLen.toFixed(0)} / ${beamLength} мм`}
             </T>
 
             <View style={S.barTrack}>
                 {bar.pieces.map((piece, idx) => {
-                    const widthPct = (piece.length / BEAM_LENGTH) * 100;
+                    const widthPct = (piece.length / beamLength) * 100;
                     const color = colorMap.get(piece.constructionId) ?? '#E5E7EB';
                     const construction = constructions.find(c => c.id === piece.constructionId);
                     return (

@@ -104,8 +104,8 @@ const VirtualizedList = <T, K extends FieldValues>(
                 key={key}
                 style={{...style, height: style.height as number - 5}}
                 className={cn(
-                    "px-2.5 hover:bg-gray-100 rounded-[10px] duration-300 cursor-pointer text-[16px] text-black-600 text-ellipsis line-clamp-1 w-full text-nowrap flex items-center font-normal small-caps",
-                    itemStateValue === valueInputState && 'bg-gray-100'
+                    "px-2 py-1.5 rounded-sm duration-300 cursor-pointer text-sm text-ellipsis line-clamp-1 w-full text-nowrap flex items-center font-normal hover:bg-accent hover:text-accent-foreground",
+                    itemStateValue === valueInputState && 'bg-accent text-accent-foreground'
                 )}
                 onClick={() => {
                     setSelectedOption(filteredOptions[index])
@@ -132,14 +132,16 @@ const VirtualizedList = <T, K extends FieldValues>(
                     const rowHandler = (element: { index: number; key: string; style: CSSProperties; }) =>
                         rowRenderer({...element, onChange: field.onChange})
                     return <>
-                        {!!label && <p className={cn("ml-4 min-h-3 mt-1.5 font-semibold text-react/300 text-[12px] duration-300 pointer-events-none small-caps")}>{label}</p>}
+                        {!!label && <p className={cn("ml-4 min-h-3 mt-1.5 font-semibold text-muted-foreground text-[12px] duration-300 pointer-events-none small-caps")}>{label}</p>}
                         <input
                         {...field}
                         ref={inputRef}
                         className={cn(
-                            'px-4 min-h-[40px] font-medium text-gray/300 rounded-[12px] border-2 outline-none focus:ring-0 text-base w-full text-ellipsis border-react/500 focus:border-react/300 bg-react/500 duration-300',
-                            !fieldState.error && 'border-1 border-react/500',
-                            fieldState.error && 'border-1 border-red-600 focus:border-2 focus:border-red-600',
+                            'w-full min-h-[40px] px-4 text-base font-medium text-ellipsis duration-300',
+                            'rounded-md border border-input bg-transparent text-foreground shadow-xs',
+                            'placeholder:text-muted-foreground/70 outline-none transition-[color,box-shadow]',
+                            'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                            fieldState.error && 'border-destructive-foreground',
                             isOpen && 'border-dark000',
                             isBlackDefault && 'placeholder-black-500',
                             className
@@ -151,11 +153,11 @@ const VirtualizedList = <T, K extends FieldValues>(
                         onFocus={handleFocus}
                     />
                         {isOpen && (
-                            <div className="absolute flex flex-col gap-2 text-[14px] z-10 w-full mt-2 p-5 bg-react/500 rounded-[20px]">
+                            <div className="absolute flex flex-col gap-2 text-[14px] z-10 w-full mt-2 p-5 rounded-2xl border border-border bg-card shadow-xl">
                                 {!isDisableSearch &&
                                     <input
                                         type={"text"}
-                                        className={"w-full px-4 py-1 font-medium text-gray/300 bg-react/400 outline-none text-[16px] rounded-[10px] placeholder-black/400 small-caps"}
+                                        className={"w-full px-4 py-1 font-medium bg-background text-foreground border border-border outline-none focus:border-ring text-[16px] rounded-[10px] placeholder:text-muted-foreground small-caps"}
                                         placeholder={"Пошук..."}
                                         value={searchTerm}
                                         onChange={handleSearchChange}
@@ -174,7 +176,7 @@ const VirtualizedList = <T, K extends FieldValues>(
                                     ) :
                                     <>{(isPending && paramsQuery)
                                         ? <Loading className={'my-5 !w-[18px] !h-[18px]'}/>
-                                        : <div className="p-2 text-gray-500 text-base text-center font-normal my-3">Не знайдено</div>
+                                        : <div className="p-2 text-muted-foreground text-base text-center font-normal my-3">Не знайдено</div>
                                     }</>
                                 }
                             </div>

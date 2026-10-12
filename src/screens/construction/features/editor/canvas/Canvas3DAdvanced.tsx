@@ -1,6 +1,7 @@
 'use client';
 
 import * as THREE from 'three';
+import type { BeamSlotLabels } from '@/screens/construction/type/editor/BeamSlots';
 import { useRef, useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Canvas3DAdvancedProps } from '@/screens/construction/type/editor/ThreeMesh';
@@ -15,8 +16,24 @@ import {ProjectionUpdater} from "@/screens/construction/features/editor/componen
 import {SceneContent} from "@/screens/construction/features/editor/component/SceneContent";
 import {loadGLBModel} from "@/screens/construction/features/editor/utils/modelUtils";
 import {DimensionLines} from "@/screens/construction/features/editor/component/dimline/DimensionLines";
+import { SHELF_ROTATION } from "@/screens/construction/constants/beamConstants";
+import { useThemeStore } from "@/store/theme/useThemeStore";
+
+/**
+ * Фон сцени.
+ *
+ * Three.js малює в canvas, а не в DOM, тож CSS-змінні теми до нього не
+ * доходять — колір доводиться передавати числом. Світлий узятий трохи
+ * темнішим за фон сторінки: на чисто білому алюміній зливається з тлом,
+ * бо сам він теж світло-сірий.
+ */
+const SCENE_BACKGROUND = { dark: 0x18181b, light: 0xe9e9ec } as const;
 
 interface Canvas3DAdvancedWithModelProps extends Canvas3DAdvancedProps {
+    beamLabels?: BeamSlotLabels;
+    hasHinge?: boolean;
+    isShelf?: boolean;
+    operationParams?: Record<string, unknown>;
     selectedMeshName?: string | null;
     profileSystemFileUrl?: string;
     hasHandle?: boolean;
@@ -25,6 +42,8 @@ interface Canvas3DAdvancedWithModelProps extends Canvas3DAdvancedProps {
     handlePosition?: number;
     drillParams?: DrillDefaultParameters;
     hideDimensions?: boolean;
+    /** Дивитись на виріб із тилу — режим перегляду дилером. */
+    viewFromBack?: boolean;
     millParams?: MillDefaultParameters;
     focusedHole?: FocusedHoleKey;
     onHoleHover?: (key: FocusedHoleKey) => void;
@@ -34,9 +53,11 @@ interface Canvas3DAdvancedWithModelProps extends Canvas3DAdvancedProps {
 }
 
 export default function Canvas3DAdvanced({
+    beamLabels, hasHinge, isShelf, operationParams,
                                              frameWidth, frameHeight, beamThickness,
                                              drillParams, millParams, cutParams,
                                              hideDimensions,
+                                             viewFromBack,
                                              hasHandle, handleSide, handleOffset, handlePosition,
                                              viewMode = 'solid',
                                              transformMode = 'none',
@@ -48,6 +69,7 @@ export default function Canvas3DAdvanced({
                                              focusedHole, onHoleHover
                                          }: Canvas3DAdvancedWithModelProps) {
     const groupRef = useRef<THREE.Group | null>(null);
+    const theme = useThemeStore(state => state.theme);
 
     const [importedModel,      setImportedModel]      = useState<THREE.Group | null>(null);
     const [originalDimensions, setOriginalDimensions] = useState<ModelDimensions | null>(null);
@@ -93,11 +115,18 @@ export default function Canvas3DAdvanced({
     return (
         <div style={{ position: 'relative', width: '100%', height: '100%' }}>
             <Canvas>
-                <color attach="background" args={[0x23272f]} />
-                <ambientLight intensity={0.5} />
-                <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
-                <ProjectionUpdater />
+                <color attach="background" args={[SCENE_BACKGROUND[theme]]} />
+                <ambientLight intensity={0.35} />
+                <hemisphereLight args={[0xffffff, 0x404050, 0.55]} />
+                <directionalLight position={[10, 10, 5]} intensity={0.9} castShadow />
+                <directionalLight position={[-8, 4, 7]} intensity={0.4} />
+
+                <ProjectionUpdater rotation={isShelf ? SHELF_ROTATION : undefined} />
                 <SceneContent
+                    beamLabels={beamLabels}
+                    hasHinge={hasHinge}
+                    isShelf={isShelf}
+                    operationParams={operationParams}
                     frameWidth={frameWidth}
                     frameHeight={frameHeight}
                     beamThickness={beamThickness}
@@ -121,12 +150,15 @@ export default function Canvas3DAdvanced({
                     handleOffset={handleOffset}
                     handlePosition={handlePosition}
                     hideDimensions={hideDimensions}
+                    viewFromBack={viewFromBack}
                     millParams={millParams}
                 />
             </Canvas>
 
             {!hideDimensions && (
                 <DimensionLines
+                    hasHinge={hasHinge}
+                    operationParams={operationParams}
                     frameWidth={frameWidth}
                     frameHeight={frameHeight}
                     beamThickness={beamThickness}

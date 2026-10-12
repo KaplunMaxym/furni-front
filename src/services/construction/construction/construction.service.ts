@@ -9,8 +9,15 @@ import instance from "@/services/api/interceptors.api";
 import {IQueryPagination} from "@/types/IQueryPagination";
 import {IConstructionForm, IConstructionFormUpdate} from "@/screens/construction/type/construction/IConstructionForm";
 
+export interface IConstructionQueryParams extends IQueryPagination {
+    /** Збіг за номером замовлення або номером конструкції. */
+    search?: string;
+    constructionStatusId?: number | string;
+    profileSystemId?: number | string;
+}
+
 export const ConstructionService = {
-    getAllConstruction: (params: IQueryPagination) =>
+    getAllConstruction: (params: IConstructionQueryParams) =>
         instance({
             url: getConstruction(),
             method: 'GET',

@@ -1,12 +1,27 @@
-import React, { FC, useEffect } from 'react';
+import React, { FC, useEffect, useState } from 'react';
 import { ModalProps } from '@/hooks/useModal/useModal';
 import Modal from '@/ui/Modal/Modal';
 import { cn } from '@/helpers/cn';
 import {Controller, useForm} from 'react-hook-form';
 import Input from '@/ui/input/Input';
+import CurrencyToggle, {
+    CURRENCY_SIGN,
+    PriceCurrency,
+    readPriceCurrency,
+    writePriceCurrency,
+} from "@/ui/prices/CurrencyToggle";
+import { useLatestCurrencyRate } from "@/screens/currency-rate/hooks/useLatestCurrencyRate";
 import Button from '@/ui/button/Button';
 import Loading from '@/ui/loading/Loading';
-import {IProfileService, SERVICE_UNITS, ServiceUnitType} from '@/screens/profile-service/types/IProfileService';
+import {
+    IProfileService,
+    SERVICE_CONDITIONS,
+    SERVICE_CONDITION_LABELS,
+    SERVICE_UNITS,
+    SERVICE_UNIT_LABELS,
+    ServiceConditionType,
+    ServiceUnitType,
+} from '@/screens/profile-service/types/IProfileService';
 import { IProfileServiceForm } from '@/screens/profile-service/types/IProfileServiceForm';
 import { useProfileServiceCreateMutation } from '@/screens/profile-service/hooks/useProfileServiceCreateMutation';
 import { useProfileServiceUpdateMutation } from '@/screens/profile-service/hooks/useProfileServiceUpdateMutation';
@@ -17,20 +32,70 @@ type Props = ModalProps & {
     profileService?: IProfileService | null;
 };
 
+/**
+ * У селектах показуємо підпис, а зберігаємо технічне значення.
+ * Раніше в списку стояли самі значення — «per_facade» і «hasGlassEdge».
+ */
+const UNIT_OPTIONS = SERVICE_UNITS.map(unit => ({
+    value: unit,
+    label: SERVICE_UNIT_LABELS[unit],
+}));
+
+const CONDITION_OPTIONS = SERVICE_CONDITIONS.map(condition => ({
+    value: condition,
+    label: SERVICE_CONDITION_LABELS[condition],
+}));
+
 const ProfileServiceCreateModal: FC<Props> = ({ profileService, ...props }) => {
     const isEditMode = !!profileService;
 
-    const { control, handleSubmit, reset, setValue, clearErrors, formState: { errors } } =
+    const { control, handleSubmit, trigger, reset, setValue, getValues, clearErrors, formState: { errors, isValid } } =
         useForm<IProfileServiceForm>({
+            mode: 'onChange',
             defaultValues: {
                 profileSystemId: '',
                 name: '',
+                code1C: '',
                 unit: '',
                 pricePerUnit: null,
                 condition: '',
                 isActive: true,
             },
         });
+
+    /*
+     * Валюта вводу ціни.
+     *
+     * У базі ціна послуги, як і решта прайсів, доларова. Гривня тут — лише
+     * спосіб набрати: введене ділиться на поточний курс, у базу йде долар.
+     * Так ціна не залежить від того, у чому її цього разу диктували.
+     */
+    const { rate } = useLatestCurrencyRate();
+    const [priceCurrency, setPriceCurrency] = useState<PriceCurrency>(readPriceCurrency);
+    const currency: PriceCurrency = rate === null ? 'USD' : priceCurrency;
+
+    /**
+     * Перемикання валюти переводить те, що вже стоїть у полі.
+     *
+     * Без цього змінювався тільки знак: під «₴» лишалось доларове число,
+     * тобто ціна, менша в тридцять разів — і саме така поїхала б у базу.
+     *
+     * Беремо значення з форми, а не з `profileService`: у полі може стояти
+     * вже набране вручну число, і підстановка збереженого стерла б його.
+     */
+    const changeCurrency = (next: PriceCurrency) => {
+        if (next !== currency && rate) {
+            const current = Number(getValues('pricePerUnit'));
+
+            if (Number.isFinite(current) && current !== 0) {
+                const converted = next === 'UAH' ? current * rate : current / rate;
+                setValue('pricePerUnit', Number(converted.toFixed(4)), { shouldValidate: true });
+            }
+        }
+
+        setPriceCurrency(next);
+        writePriceCurrency(next);
+    };
 
     const { mutateAsync: createProfileService, isPending: isCreating } =
         useProfileServiceCreateMutation();
@@ -50,8 +115,14 @@ const ProfileServiceCreateModal: FC<Props> = ({ profileService, ...props }) => {
         if (profileService && props.open) {
             setValue('profileSystemId', profileService.profileSystemId);
             setValue('name', profileService.name);
+            setValue('code1C', profileService.code1C ?? '');
             setValue('unit', profileService.unit as ServiceUnitType);
-            setValue('pricePerUnit', profileService.pricePerUnit);
+            setValue(
+                'pricePerUnit',
+                currency === 'UAH' && rate
+                    ? Number((profileService.pricePerUnit * rate).toFixed(2))
+                    : profileService.pricePerUnit,
+            );
             setValue('condition', profileService.condition ?? '');
             setValue('isActive', profileService.isActive);
         } else if (!profileService && props.open) {
@@ -63,6 +134,21 @@ const ProfileServiceCreateModal: FC<Props> = ({ profileService, ...props }) => {
         if (!props.open) reset();
     }, [props.open, reset]);
 
+    /**
+     * Кнопка збереження вимкнена, поки форма невалідна.
+     *
+     * У режимі редагування значення підставляються через `setValue`, а він не
+     * перераховує `isValid` — без явного `trigger` кнопка лишалась би сірою на
+     * вже заповненій формі. У режимі створення `trigger` не викликаємо: він би
+     * одразу підсвітив червоним усі порожні обов'язкові поля.
+     */
+    useEffect(() => {
+        if (props.open && isEditMode) void trigger();
+    }, [props.open, isEditMode, trigger]);
+
+    // Назовні завжди долар — незалежно від того, у чому набрали
+    const toUsd = (value: number) => (currency === 'UAH' && rate ? value / rate : value);
+
     const onSubmit = async (data: IProfileServiceForm) => {
         try {
             if (isEditMode && profileService) {
@@ -70,13 +156,13 @@ const ProfileServiceCreateModal: FC<Props> = ({ profileService, ...props }) => {
                 await updateProfileService({
                     id: profileService.id,
                     ...(updatePayload as Omit<IProfileServiceForm, 'profileSystemId'>),
-                    pricePerUnit: parseFloat(String(updatePayload.pricePerUnit)),
+                    pricePerUnit: toUsd(parseFloat(String(updatePayload.pricePerUnit))),
                 });
             } else {
                 await createProfileService({
                     ...data,
                     profileSystemId: Number(data.profileSystemId),
-                    pricePerUnit: parseFloat(String(data.pricePerUnit)),
+                    pricePerUnit: toUsd(parseFloat(String(data.pricePerUnit))),
                 });
             }
             reset();
@@ -90,18 +176,18 @@ const ProfileServiceCreateModal: FC<Props> = ({ profileService, ...props }) => {
         <Modal
             {...props}
             className={cn(
-                'flex flex-col gap-2.5 max-w-[500px] min-h-10 rounded-base-mini mx-2 overflow-y-auto max-h-dvh h-auto',
+                'max-w-[500px]',
             )}
         >
             <Modal.Title className="gap-2" onClose={props.onClose}>
                 {isEditMode ? 'Редагувати послугу' : 'Створити послугу'}
             </Modal.Title>
 
-            <Modal.Body className="flex flex-col gap-4 rounded-xl p-3">
+            <Modal.Body className="flex flex-col gap-4">
                 <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
 
                     <div className="relative flex flex-col gap-[5px] h-fit">
-                        <p className="text-xs font-semibold pl-4">Назва *</p>
+                        <p className="text-xs font-semibold pl-4">Назва</p>
                         <Input
                             control={control}
                             name="name"
@@ -110,15 +196,25 @@ const ProfileServiceCreateModal: FC<Props> = ({ profileService, ...props }) => {
                             rules={{ required: 'Назва обов\'язкова' }}
                         />
                         {errors.name && (
-                            <p className="text-red-500 text-sm">{errors.name.message}</p>
+                            <p className="text-destructive-foreground text-sm">{errors.name.message}</p>
                         )}
+                    </div>
+
+                    <div className="relative flex flex-col gap-[5px] h-fit">
+                        <p className="text-xs font-semibold pl-4">Код 1С</p>
+                        <Input
+                            control={control}
+                            name="code1C"
+                            placeholder="Напр. 000045212"
+                            classNameContainer="w-full"
+                        />
                     </div>
 
                     {!isEditMode && (
                         <div className="relative flex flex-col gap-[5px] h-fit">
-                            <p className="text-xs font-semibold pl-4">Система профілів *</p>
+                            <p className="text-xs font-semibold pl-4">Система профілів</p>
                             {isPendingProfileSystem ? (
-                                <p className="text-gray-400 text-sm pl-4">Завантаження профільних систем...</p>
+                                <p className="text-muted-foreground text-sm pl-4">Завантаження профільних систем...</p>
                             ) : (
                                 <>
                                     <Controller
@@ -145,7 +241,7 @@ const ProfileServiceCreateModal: FC<Props> = ({ profileService, ...props }) => {
                                         )}
                                     />
                                     {errors.profileSystemId && (
-                                        <p className="text-red-500 text-xs mt-1">
+                                        <p className="text-destructive-foreground text-xs mt-1">
                                             {errors.profileSystemId.message as string}
                                         </p>
                                     )}
@@ -155,7 +251,7 @@ const ProfileServiceCreateModal: FC<Props> = ({ profileService, ...props }) => {
                     )}
 
                     <div className="relative flex flex-col gap-[5px] h-fit">
-                        <p className="text-xs font-semibold pl-4">Одиниця виміру *</p>
+                        <p className="text-xs font-semibold pl-4">Одиниця виміру</p>
                         <Controller
                             control={control}
                             name="unit"
@@ -166,26 +262,33 @@ const ProfileServiceCreateModal: FC<Props> = ({ profileService, ...props }) => {
                                         field.value as ServiceUnitType | '',
                                         (val) => field.onChange(val as ServiceUnitType),
                                     ]}
-                                    placeholder="Оберіть одиниця виміру"
+                                    placeholder="Оберіть одиницю виміру"
                                     searchable={false}
                                     className="w-full"
-                                    options={SERVICE_UNITS as unknown as (ServiceUnitType)[]}
+                                    options={UNIT_OPTIONS}
+                                    optionValue="value"
+                                    optionLabel="label"
+                                    hasError={!!errors.unit}
                                 />
                             )}
                         />
                         {errors.unit && (
-                            <p className="text-red-500 text-sm">{errors.unit.message}</p>
+                            <p className="text-destructive-foreground text-sm">{errors.unit.message}</p>
                         )}
                     </div>
 
                     <div className="relative flex flex-col gap-[5px] h-fit">
-                        <p className="text-xs font-semibold pl-4">Ціна за одиницю *</p>
+                        <div className="flex items-center justify-between gap-3 pl-4">
+                            <p className="text-xs font-semibold">Ціна за одиницю</p>
+                            <CurrencyToggle value={currency} onChange={changeCurrency} rate={rate} />
+                        </div>
                         <Input
                             control={control}
                             name="pricePerUnit"
                             placeholder="0.0000"
                             classNameContainer="w-full"
                             type="number"
+                            unit={CURRENCY_SIGN[currency]}
                             rules={{
                                 required: 'Ціна обов\'язкова',
                                 validate: (val: number) => {
@@ -197,7 +300,7 @@ const ProfileServiceCreateModal: FC<Props> = ({ profileService, ...props }) => {
                             }}
                         />
                         {errors.pricePerUnit && (
-                            <p className="text-red-500 text-sm">{errors.pricePerUnit.message}</p>
+                            <p className="text-destructive-foreground text-sm">{errors.pricePerUnit.message}</p>
                         )}
                     </div>
 
@@ -210,12 +313,14 @@ const ProfileServiceCreateModal: FC<Props> = ({ profileService, ...props }) => {
                                 <SelectorSearch
                                     getAndSet={[
                                         field.value ?? '',
-                                        (val) => field.onChange(val),
+                                        (val) => field.onChange(val as ServiceConditionType),
                                     ]}
                                     placeholder="Оберіть умову"
                                     searchable={false}
                                     className="w-full"
-                                    options={['always', 'hasHandle', 'hasHinge', 'hasGlass', 'hasGlassEdge']}
+                                    options={CONDITION_OPTIONS}
+                                    optionValue="value"
+                                    optionLabel="label"
                                 />
                             )}
                         />
@@ -225,7 +330,7 @@ const ProfileServiceCreateModal: FC<Props> = ({ profileService, ...props }) => {
                         <Button
                             type="button"
                             onClick={props.onClose}
-                            color="red"
+                            color="blackNoneLine"
                             className="flex-1"
                             disabled={isPending}
                         >
@@ -235,7 +340,7 @@ const ProfileServiceCreateModal: FC<Props> = ({ profileService, ...props }) => {
                             type="submit"
                             color="greenDarkgreen"
                             className="flex-1"
-                            disabled={isPending}
+                            disabled={isPending || !isValid}
                         >
                             {isEditMode ? 'Оновити послугу' : 'Створити послугу'}
                         </Button>

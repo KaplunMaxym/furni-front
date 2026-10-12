@@ -1,136 +1,125 @@
-import {IOrderCostCutPlanBar, IOrderCostCutPlanMaterial} from "@/screens/order/types/order/IOrder";
-import {IConstruction} from "@/screens/construction/type/construction/IConstruction";
-import {ChevronDown} from "lucide-react";
-import {cn} from "@/helpers/cn";
-import {FC, useState} from "react";
+import { FC, useState } from "react";
 
-const CONSTRUCTION_COLORS = [
-    {bg: '#B5D4F4', text: '#0C447C'},
-    {bg: '#9FE1CB', text: '#085041'},
-    {bg: '#FAC775', text: '#633806'},
-    {bg: '#F4C0D1', text: '#72243E'},
-    {bg: '#C0DD97', text: '#27500A'},
-    {bg: '#CECBF6', text: '#3C3489'},
-];
+import { cn } from "@/helpers/cn";
+import { IOrderCostCutPlanBar, IOrderCostCutPlanMaterial } from "@/screens/order/types/order/IOrder";
+import { IConstruction } from "@/screens/construction/type/construction/IConstruction";
+import { useThemeStore } from "@/store/theme/useThemeStore";
+
+/**
+ * Кольори шматків на схемі прутка.
+ *
+ * Були світлі пастельні (`#B5D4F4`, `#9FE1CB`) з темним текстом — набір під
+ * білу сторінку. Тепер це кольори графіків теми: на темному фоні вони видні,
+ * а між собою розрізняються так само добре.
+ *
+ * Тут потрібні саме значення, а не класи: ширину шматка все одно рахує
+ * JavaScript, і колір задається тим самим inline-стилем.
+ */
+const PIECE_COLORS = ['#1447E6', '#00BC7D', '#FE9A00', '#AD46FF', '#FF2057', '#52525C'];
+
+/**
+ * Залишок прутка — приглушений, щоб не сприймався як ще одна деталь.
+ *
+ * Ширину шматків рахує JavaScript і задає inline-стилем, тож колір тут теж
+ * значення, а не клас — CSS-змінна теми до нього не дійде. Звідси дві
+ * константи: на білому темно-сірий залишок виглядав би як ще одна деталь,
+ * тільки чорна.
+ */
+const REMAINDER_COLORS = { dark: '#27272A', light: '#D4D4D8' } as const;
 
 interface CutPlanBlockProps {
     cutPlan: IOrderCostCutPlanMaterial[];
     constructions: IConstruction[];
 }
 
-export const CutPlanBlock: FC<CutPlanBlockProps> = ({cutPlan, constructions}) => {
-    const [isExpanded, setIsExpanded] = useState(false);
+/**
+ * Розкрій профілю.
+ *
+ * Зовнішнє згортання прибрано: блок відкривається окремою вкладкою, і перший
+ * клік просто відкривав те, заради чого на вкладку й переходили.
+ */
+export const CutPlanBlock: FC<CutPlanBlockProps> = ({ cutPlan, constructions }) => {
+    const theme = useThemeStore(state => state.theme);
+    const remainderColor = REMAINDER_COLORS[theme];
 
-    const colorMap = new Map<number, { bg: string; text: string }>();
-    constructions.forEach((c, i) => {
-        colorMap.set(c.id, CONSTRUCTION_COLORS[i % CONSTRUCTION_COLORS.length]);
-    });
-
-    const totalBars = cutPlan.reduce((s, m) => s + m.bars.length, 0);
+    const colorMap = new Map<number, string>();
+    constructions.forEach((c, i) => colorMap.set(c.id, PIECE_COLORS[i % PIECE_COLORS.length]));
 
     return (
-        <div className="mb-4 rounded-xl overflow-hidden bg-white"
-             style={{border: '2px solid #F97316', boxShadow: '0 4px 12px rgba(249,115,22,0.12)'}}>
-            <button
-                onClick={() => setIsExpanded(p => !p)}
-                className="w-full flex items-center justify-between px-4 py-3 transition-colors hover:bg-orange-50"
-                style={{
-                    background: 'white',
-                    borderBottom: isExpanded ? '2px solid #F97316' : undefined,
-                }}
-            >
-                <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                         style={{background: '#F97316'}}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                             stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M2 20h20M6 20V10l6-8 6 8v10"/>
-                            <path d="M10 20v-5h4v5"/>
-                        </svg>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold" style={{color: '#92400E'}}>
-                            Розкрій профілю
-                        </span>
-                        <span className="text-xs px-2.5 py-1 rounded-full font-bold"
-                              style={{background: '#F97316', color: '#fff'}}>
-                            {totalBars} прутки
-                        </span>
-                    </div>
-                </div>
-                <ChevronDown
-                    size={15}
-                    className={cn("transition-transform duration-200", isExpanded && "rotate-180")}
-                    style={{color: '#F97316'}}
-                />
-            </button>
+        <div className="flex flex-col gap-3">
+            {cutPlan.map(material => {
+                const totalRemainder = material.bars.reduce((s, b) => s + b.remainder, 0);
+                /*
+                 * Довжину прутка беремо з розрахунку, а не 3000 «за замовчуванням»,
+                 * як було: матеріали з іншою балкою малювались у невірному
+                 * масштабі — шматки на 4000 мм не влазили в смугу, а залишок
+                 * виходив відʼємним.
+                 */
+                const beamLength = material.beamLength || 3000;
 
-            {isExpanded && (
-                <div className="border-t border-orange-200 bg-white">
-                    {cutPlan.map(material => {
-                        const totalRemainder = material.bars.reduce((s, b) => s + b.remainder, 0);
-                        const beamLength = 3000;
-
-                        return (
-                            <div key={`${material.articleCode}-${material.color}`}
-                                 className="px-4 py-3 border-b border-orange-100 last:border-b-0 hover:bg-orange-50 transition-colors">
-
-                                <div className="flex items-center justify-between mb-3">
-                                    <div className="flex items-center gap-1.5">
-                                        <span className="text-xs font-bold text-gray-900">{material.articleCode}</span>
-                                        {material.color && (
-                                            <span className="text-xs text-gray-500">({material.color})</span>
-                                        )}
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <span className="text-xs px-2.5 py-1 rounded font-bold"
-                                              style={{background: '#F97316', color: '#fff'}}>
-                                            {material.bars.length} прутки
-                                        </span>
-                                        <span className="text-xs px-2.5 py-1 rounded font-bold"
-                                              style={{background: '#F97316', color: '#fff'}}>
-                                            Відхід: {totalRemainder.toFixed(0)} мм
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-3">
-                                    {material.bars.map(bar => (
-                                        <BarRow
-                                            key={bar.barIndex}
-                                            bar={bar}
-                                            beamLength={beamLength}
-                                            colorMap={colorMap}
-                                            constructions={constructions}
-                                        />
-                                    ))}
-                                </div>
-
-                                <div className="flex gap-3 mt-3 flex-wrap">
-                                    {constructions.map(c => {
-                                        const color = colorMap.get(c.id);
-                                        if (!color) return null;
-                                        return (
-                                            <div key={c.id} className="flex items-center gap-1.5">
-                                                <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
-                                                     style={{background: color.bg}}/>
-                                                <span className="text-xs text-gray-600 font-medium">
-                                                    К-я {c.constructionNo}
-                                                </span>
-                                            </div>
-                                        );
-                                    })}
-                                    <div className="flex items-center gap-1.5">
-                                        <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
-                                             style={{background: '#FED7AA', border: '1px dashed #F97316'}}/>
-                                        <span className="text-xs text-gray-600 font-medium">Залишок</span>
-                                    </div>
-                                </div>
+                return (
+                    <div
+                        key={`${material.articleCode}-${material.color}`}
+                        className="overflow-hidden rounded-xl border border-border bg-card"
+                    >
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+                            <div className="flex min-w-0 items-center gap-2">
+                                <span className="truncate font-mono text-sm text-foreground">
+                                    {material.articleCode}
+                                </span>
+                                {material.color && (
+                                    <span className="truncate text-sm text-muted-foreground">
+                                        {material.color}
+                                    </span>
+                                )}
                             </div>
-                        );
-                    })}
-                </div>
-            )}
+
+                            <div className="flex shrink-0 items-center gap-2 text-xs">
+                                <span className="rounded bg-muted px-2 py-0.5 tabular-nums text-muted-foreground">
+                                    {material.bars.length} прутків
+                                </span>
+                                <span className="rounded bg-muted px-2 py-0.5 tabular-nums text-muted-foreground">
+                                    Відхід {totalRemainder.toFixed(0)} мм
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-4 p-4">
+                            {material.bars.map(bar => (
+                                <BarRow
+                                    key={bar.barIndex}
+                                    bar={bar}
+                                    beamLength={beamLength}
+                                    colorMap={colorMap}
+                                    constructions={constructions}
+                                    remainderColor={remainderColor}
+                                />
+                            ))}
+                        </div>
+
+                        {/* Легенда: без неї кольори шматків нічого не означають */}
+                        <div className="flex flex-wrap gap-x-4 gap-y-2 border-t border-border px-4 py-3">
+                            {constructions.map(c => (
+                                <span key={c.id} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                    <span
+                                        className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                                        style={{ background: colorMap.get(c.id) }}
+                                    />
+                                    Конструкція {c.constructionNo}
+                                </span>
+                            ))}
+
+                            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <span
+                                    className="h-2.5 w-2.5 shrink-0 rounded-sm border border-dashed border-border"
+                                    style={{ background: remainderColor }}
+                                />
+                                Залишок
+                            </span>
+                        </div>
+                    </div>
+                );
+            })}
         </div>
     );
 };
@@ -138,116 +127,96 @@ export const CutPlanBlock: FC<CutPlanBlockProps> = ({cutPlan, constructions}) =>
 interface BarRowProps {
     bar: IOrderCostCutPlanBar;
     beamLength: number;
-    colorMap: Map<number, { bg: string; text: string }>;
+    colorMap: Map<number, string>;
     constructions: IConstruction[];
+    remainderColor: string;
 }
 
-const BarRow: FC<BarRowProps> = ({bar, beamLength, colorMap, constructions}) => {
+const BarRow: FC<BarRowProps> = ({ bar, beamLength, colorMap, constructions, remainderColor }) => {
     const [hovered, setHovered] = useState<number | null>(null);
 
     const totalPiecesLength = bar.pieces.reduce((sum, piece) => sum + piece.length, 0);
-    const remainder = beamLength - totalPiecesLength;
-    const remainderPct = (remainder / beamLength) * 100;
+    const remainderPct = ((beamLength - totalPiecesLength) / beamLength) * 100;
+
+    const hoveredPiece = bar.pieces.find(piece => piece.id === hovered) ?? null;
+    const hoveredConstruction = hoveredPiece
+        ? constructions.find(c => c.id === hoveredPiece.constructionId)
+        : undefined;
 
     return (
         <div>
-            <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-bold px-2 py-1 rounded" style={{background: '#F97316', color: '#fff'}}>
-                    Пруток {bar.barIndex + 1}
-                </span>
-                <span className="text-xs text-gray-600 font-medium">
+            <div className="mb-1.5 flex items-center gap-2 text-xs">
+                <span className="font-medium text-foreground">Пруток {bar.barIndex + 1}</span>
+                <span className="tabular-nums text-muted-foreground">
                     {totalPiecesLength.toFixed(0)} / {beamLength} мм
                 </span>
-                <span className="ml-auto text-xs px-2.5 py-1 rounded font-bold">
-                    Залишок: {bar.remainder.toFixed(0)} мм
+                <span className="ml-auto tabular-nums text-muted-foreground">
+                    Залишок {bar.remainder.toFixed(0)} мм
                 </span>
             </div>
 
-            <div className="flex h-8 rounded-md overflow-hidden border-2"
-                 style={{borderColor: '#F97316', position: 'relative', width: '100%'}}>
+            {/*
+              * Обгортка без `overflow-hidden` — саме заради підказки.
+              *
+              * Раніше вона висіла всередині смуги, а смузі потрібен
+              * `overflow-hidden`, щоб шматки не вилазили за заокруглені кути.
+              * Тому підказка обрізалась по верхньому краю смуги і при наведенні
+              * не показувалась узагалі — а це єдине місце, де видно, яка саме
+              * деталь і з якої конструкції лежить у цьому шматку.
+              *
+              * Тепер підказка одна на пруток і живе поверх смуги, а не в ній.
+              */}
+            <div className="relative">
+                {hoveredPiece && (
+                    <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-input bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-lg">
+                        <span className="font-medium text-foreground">
+                            Конструкція {hoveredConstruction?.constructionNo ?? hoveredPiece.constructionId}
+                        </span>
+                        {' · '}
+                        {hoveredPiece.detailCode}
+                        {' · '}
+                        <span className="tabular-nums">{hoveredPiece.length.toFixed(0)} мм</span>
+                    </div>
+                )}
+
+            <div className="relative flex h-8 w-full overflow-hidden rounded-md border border-border">
                 {bar.pieces.map((piece, idx) => {
-                    const color = colorMap.get(piece.constructionId);
                     const widthPct = (piece.length / beamLength) * 100;
-                    const construction = constructions.find(c => c.id === piece.constructionId);
                     const isHovered = hovered === piece.id;
 
                     return (
                         <div
                             key={piece.id}
-                            style={{
-                                width: `${widthPct}%`,
-                                background: color?.bg ?? '#e5e7eb',
-                                borderRight: idx < bar.pieces.length - 1
-                                    ? '1px solid rgba(255,255,255,0.8)'
-                                    : undefined,
-                                position: 'relative',
-                                transition: 'filter 0.1s',
-                                filter: isHovered ? 'brightness(0.88)' : undefined,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                            }}
                             onMouseEnter={() => setHovered(piece.id)}
                             onMouseLeave={() => setHovered(null)}
+                            className={cn(
+                                'relative flex items-center justify-center transition-[filter]',
+                                idx < bar.pieces.length - 1 && 'border-r border-background/40',
+                                isHovered && 'brightness-125',
+                            )}
+                            style={{
+                                width: `${widthPct}%`,
+                                background: colorMap.get(piece.constructionId) ?? remainderColor,
+                            }}
                         >
-                            <span style={{
-                                fontSize: '12px',
-                                fontWeight: '700',
-                                color: color?.text ?? '#374151',
-                                pointerEvents: 'none',
-                                textAlign: 'center',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                padding: '0 2px',
-                            }}>
+                            <span className="pointer-events-none truncate px-1 text-xs font-medium tabular-nums text-white/600">
                                 {piece.length.toFixed(0)}
                             </span>
-
-                            {isHovered && (
-                                <div style={{
-                                    position: 'absolute',
-                                    bottom: '110%',
-                                    left: '50%',
-                                    transform: 'translateX(-50%)',
-                                    background: '#ffffff',
-                                    border: '1px solid #F97316',
-                                    borderRadius: '6px',
-                                    padding: '6px 10px',
-                                    fontSize: '11px',
-                                    fontWeight: '600',
-                                    whiteSpace: 'nowrap',
-                                    zIndex: 20,
-                                    pointerEvents: 'none',
-                                    color: '#1F2937',
-                                    boxShadow: '0 2px 8px rgba(249,115,22,0.15)',
-                                }}>
-                                    {piece.detailCode} ·
-                                    К-я {construction?.constructionNo ?? piece.constructionId} · {piece.length.toFixed(0)} мм
-                                </div>
-                            )}
                         </div>
                     );
                 })}
 
                 {bar.remainder > 0 && (
-                    <div style={{
-                        width: `${remainderPct}%`,
-                        background: '#FED7AA',
-                        borderLeft: '1px dashed #F97316',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '12px',
-                        fontWeight: '700',
-                        color: '#92400E',
-                        minWidth: '40px',
-                    }}>
-                        {remainderPct > 2
-                            ? `${bar.remainder.toFixed(0)}`
-                            : ''}
+                    <div
+                        className="flex min-w-[40px] items-center justify-center border-l border-dashed border-border"
+                        style={{ width: `${remainderPct}%`, background: remainderColor }}
+                    >
+                        <span className="truncate px-1 text-xs tabular-nums text-muted-foreground">
+                            {remainderPct > 2 ? bar.remainder.toFixed(0) : ''}
+                        </span>
                     </div>
                 )}
+            </div>
             </div>
         </div>
     );

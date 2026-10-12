@@ -6,8 +6,8 @@ import {useUsersFilterStore} from "@/store/user/user-store/useUsersFilter";
 
 export const useUsersQuery = () => {
     const useFilteredUsers = () => {
-        const {page, limit} = useUsersFilterStore();
-        return {page, limit: Number(limit)}
+        const {page, limit, sortBy, sortOrder} = useUsersFilterStore();
+        return {page, limit: Number(limit), sortBy, sortOrder}
     };
     const filterParams = useFilteredUsers()
     return useQuery({

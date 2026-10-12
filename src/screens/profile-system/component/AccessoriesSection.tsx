@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Loader2, Plus, Search, Trash2, X } from 'lucide-react';
+import { Loader2, Minus, Plus, Trash2, X } from 'lucide-react';
 import { useProfileAccessorySimple } from '@/screens/profile-accessory/hooks/useProfileAccessorySimple';
 import { useProfileAccessoryLinkMutation } from '@/screens/profile-system/hooks/useProfileAccessoryLinkMutation';
 import { useProfileAccessoryUnlinkMutation } from '@/screens/profile-system/hooks/useProfileAccessoryUnlinkMutation';
@@ -7,15 +7,21 @@ import { AccessoryBillingType, AccessoryUnitType, ACCESSORY_UNIT_LABELS, IProfil
 import { IProfileSystemAccessory } from '@/screens/profile-system/types/profile-system/IProfileSystemDetail';
 import useModal, { ModalProps } from '@/hooks/useModal/useModal';
 import Modal from '@/ui/Modal/Modal';
+import SearchInput from '@/ui/input/SearchInput';
+import { Button } from '@/ui/shadcn/button';
+import { cn } from '@/helpers/cn';
 
 const BILLING_LABELS: Record<AccessoryBillingType, string> = {
     PER_FACADE_BASE:     'Базово',
     PER_FACADE_OPTIONAL: 'Опціонально',
 };
 
+/** Порядок сегментів у перемикачі — базове першим, воно частіше. */
+const BILLING_ORDER: AccessoryBillingType[] = ['PER_FACADE_BASE', 'PER_FACADE_OPTIONAL'];
+
 const BILLING_STYLES: Record<AccessoryBillingType, string> = {
-    PER_FACADE_BASE:     'bg-blue-50 text-blue-600',
-    PER_FACADE_OPTIONAL: 'bg-amber-50 text-amber-600',
+    PER_FACADE_BASE:     'bg-chart-1/15 text-chart-1',
+    PER_FACADE_OPTIONAL: 'bg-chart-3/15 text-chart-3',
 };
 
 const decodeDecimal = (val: unknown): number => {
@@ -42,19 +48,19 @@ const AccessoryRow: React.FC<AccessoryRowProps> = ({ item, onUnlink, isUnlinking
     const billing   = item.billingType as AccessoryBillingType;
 
     return (
-        <div className="flex items-center justify-between gap-3 py-2 px-3 rounded-lg bg-react/500 hover:bg-react/400 transition-colors group">
+        <div className="flex items-center justify-between gap-3 py-2 px-3 rounded-lg bg-accent/40 hover:bg-accent/60 transition-colors group">
             <div className="flex items-center gap-3 min-w-0">
                 {colorCode ? (
                     <div
-                        className="w-3 h-3 rounded-full shrink-0 border border-black/10"
+                        className="w-3 h-3 rounded-full shrink-0 border border-border"
                         style={{ backgroundColor: colorCode }}
                     />
                 ) : (
-                    <div className="w-3 h-3 rounded-full shrink-0 border border-dashed border-gray-400" />
+                    <div className="w-3 h-3 rounded-full shrink-0 border border-dashed border-input" />
                 )}
                 <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-gray-800 truncate">{acc.name}</p>
-                    <p className="text-xs text-gray-400 font-mono">
+                    <p className="text-sm font-medium text-foreground truncate">{acc.name}</p>
+                    <p className="text-xs text-muted-foreground font-mono">
                         {acc.articleCode}
                         {acc.color?.name ? ` · ${acc.color.name}` : ''}
                     </p>
@@ -62,7 +68,7 @@ const AccessoryRow: React.FC<AccessoryRowProps> = ({ item, onUnlink, isUnlinking
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-                <span className="text-xs text-gray-400 tabular-nums hidden sm:block">
+                <span className="text-xs text-muted-foreground tabular-nums hidden sm:block">
                     {unitLabel(acc.unit, item.quantityPerUnit)}
                 </span>
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${BILLING_STYLES[billing] ?? ''}`}>
@@ -71,7 +77,7 @@ const AccessoryRow: React.FC<AccessoryRowProps> = ({ item, onUnlink, isUnlinking
                 <button
                     onClick={onUnlink}
                     disabled={isUnlinking}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 disabled:cursor-not-allowed"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/40 text-muted-foreground hover:text-destructive-foreground disabled:cursor-not-allowed"
                     title="Відв'язати"
                 >
                     {isUnlinking
@@ -117,203 +123,189 @@ const LinkAccessoryModal: React.FC<LinkAccessoryModalProps> = ({
     };
 
     return (
-        <Modal
-            {...props}
-            className="flex flex-col max-w-lg mx-2 max-h-[60vh] rounded-xl overflow-hidden"
-        >
-            <Modal.Title className="px-5 py-4" onClose={props.onClose}>
-                <div>
-                    <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">
-                        Прив'язати аксесуар до профілю
-                    </p>
-                </div>
+        /*
+         * Одна колонка замість двох.
+         *
+         * Було: ліворуч список, праворуч панель на 208 px із типом, кількістю
+         * і кнопкою. Панель займала половину і без вибраного аксесуара стояла
+         * приглушена й непрацездатна — тобто половина вікна не робила нічого
+         * більшу частину часу, а списку лишалося менше 300 px на назви,
+         * артикули й кольори.
+         *
+         * Стало: спершу список на всю ширину, а налаштування з'являються
+         * знизу після вибору — там, де вони й потрібні, і рівно тоді.
+         */
+        <Modal {...props} className="max-w-[520px]">
+            <Modal.Title onClose={props.onClose}>
+                Прив&apos;язати аксесуар
             </Modal.Title>
 
-            <Modal.Body className="flex flex-col gap-0 p-0 overflow-hidden">
+            <Modal.Body className="flex flex-col gap-3">
+                <SearchInput
+                    value={search}
+                    onChange={setSearch}
+                    placeholder="Назва, артикул або колір"
+                />
 
-                <div className="px-4 py-3">
-                    <div className="flex items-center gap-2.5 bg-react/500 rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-[#639922]/30 transition-all border border-react/400">
-                        <Search size={14} className="text-gray-400 shrink-0" />
-                        <input
-                            autoFocus
-                            value={search}
-                            onChange={e => setSearch(e.target.value)}
-                            placeholder="Пошук за назвою, артикулом або кольором..."
-                            className="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-500 text-gray-200"
-                            style={{ background: 'transparent' }}
-                        />
-                        {search && (
-                            <button
-                                onClick={() => setSearch('')}
-                                className="text-gray-400 hover:text-gray-200 transition-colors"
-                            >
-                                <X size={13} />
-                            </button>
-                        )}
+                <div className="max-h-[280px] min-h-[160px] overflow-y-auto">
+                    {isPending && (
+                        <div className="flex flex-col items-center justify-center gap-2 py-10">
+                            <Loader2 size={20} className="animate-spin text-muted-foreground" />
+                            <p className="text-xs text-muted-foreground">Завантаження…</p>
+                        </div>
+                    )}
+
+                    {!isPending && filtered.length === 0 && (
+                        <p className="py-10 text-center text-sm text-muted-foreground">
+                            {search ? 'Нічого не знайдено' : 'Усі аксесуари вже прив\'язані'}
+                        </p>
+                    )}
+
+                    <div className="space-y-0.5">
+                        {filtered.map(a => {
+                            const isSelected = selected?.id === a.id;
+
+                            return (
+                                <button
+                                    key={a.id}
+                                    onClick={() => { setSelected(a); setQty(1); }}
+                                    className={cn(
+                                        'flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors',
+                                        isSelected
+                                            // Вибране видно кольором, а не ледь помітною рамкою
+                                            ? 'bg-primary/10 text-foreground'
+                                            : 'hover:bg-accent/60',
+                                    )}
+                                >
+                                    <span
+                                        className={cn(
+                                            'h-3.5 w-3.5 shrink-0 rounded-full border border-border',
+                                            !a.color?.code && 'border-dashed',
+                                        )}
+                                        style={{ backgroundColor: a.color?.code ?? 'transparent' }}
+                                    />
+
+                                    <span className="min-w-0 flex-1">
+                                        <span className="block truncate text-sm font-medium leading-tight text-foreground">
+                                            {a.name}
+                                        </span>
+                                        <span className="block truncate text-xs text-muted-foreground">
+                                            <span className="font-mono">{a.articleCode}</span>
+                                            {a.color?.name ? ` · ${a.color.name}` : ''}
+                                        </span>
+                                    </span>
+
+                                    <span className="shrink-0 text-xs text-muted-foreground">
+                                        {ACCESSORY_UNIT_LABELS[a.unit]}
+                                    </span>
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 
-                {/* Основний контент: список + панель */}
-                <div className="flex min-h-[260px] max-h-[55vh] border-t border-react/400">
+                {/* Налаштування з'являються тільки після вибору */}
+                {selected && (
+                    <div className="flex flex-col gap-3 border-t border-border pt-3">
+                        <div className="flex items-center justify-between gap-3">
+                            <p className="min-w-0 truncate text-sm font-medium text-foreground">
+                                {selected.name}
+                                {selected.color?.name && (
+                                    <span className="text-muted-foreground"> · {selected.color.name}</span>
+                                )}
+                            </p>
 
-                    {/* ── Список аксесуарів ── */}
-                    <div className="flex-1 overflow-y-auto px-2 py-2">
-                        {isPending && (
-                            <div className="flex flex-col items-center justify-center h-full gap-2 py-10">
-                                <Loader2 size={20} className="animate-spin text-gray-400" />
-                                <p className="text-xs text-gray-400">Завантаження...</p>
-                            </div>
-                        )}
-
-                        {!isPending && filtered.length === 0 && (
-                            <div className="flex flex-col items-center justify-center h-full gap-2 py-10">
-                                <Search size={18} className="text-gray-500" />
-                                <p className="text-sm text-gray-500 text-center">
-                                    {search ? 'Нічого не знайдено' : 'Всі прив\'язані'}
-                                </p>
-                            </div>
-                        )}
-
-                        <div className="space-y-0.5">
-                            {filtered.map(a => {
-                                const isSelected = selected?.id === a.id;
-                                return (
-                                    <button
-                                        key={a.id}
-                                        onClick={() => { setSelected(a); setQty(1); }}
-                                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-left ${
-                                            isSelected
-                                                ? 'bg-react/400 ring-1 ring-inset ring-react/200'
-                                                : 'hover:bg-react/500'
-                                        }`}
-                                    >
-                                        {a.color?.code ? (
-                                            <div
-                                                className="w-3.5 h-3.5 rounded-full shrink-0 border border-black/10"
-                                                style={{ backgroundColor: a.color.code }}
-                                            />
-                                        ) : (
-                                            <div className="w-3.5 h-3.5 rounded-full shrink-0 border border-dashed border-gray-500" />
-                                        )}
-                                        <div className="min-w-0 flex-1">
-                                            <p className="text-sm font-medium text-gray-200 truncate leading-tight">
-                                                {a.name}
-                                            </p>
-                                            <div className="flex items-center gap-1.5 mt-0.5">
-                                                <span className="text-[11px] text-gray-500 font-mono">{a.articleCode}</span>
-                                                {a.color?.name && (
-                                                    <>
-                                                        <span className="text-gray-600">·</span>
-                                                        <span className="text-[11px] text-gray-500">{a.color.name}</span>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <span className="text-[11px] text-gray-500 shrink-0">
-                                            {ACCESSORY_UNIT_LABELS[a.unit]}
-                                        </span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-                    {/* ── Права панель налаштувань ── */}
-                    <div className={`w-52 shrink-0 border-l border-react/400 flex flex-col transition-all duration-200 ${selected ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
-
-                        {/* Вибраний аксесуар */}
-                        <div className="px-4 pt-4 pb-3 border-b border-react/400">
-                            {selected ? (
-                                <div className="flex items-center gap-2">
-                                    {selected.color?.code ? (
-                                        <div
-                                            className="w-3 h-3 rounded-full shrink-0 border border-black/10"
-                                            style={{ backgroundColor: selected.color.code }}
-                                        />
-                                    ) : (
-                                        <div className="w-3 h-3 rounded-full shrink-0 border border-dashed border-gray-500" />
-                                    )}
-                                    <div className="min-w-0">
-                                        <p className="text-xs font-medium text-gray-200 truncate">{selected.name}</p>
-                                        {selected.color?.name && (
-                                            <p className="text-[11px] text-gray-500 truncate">{selected.color.name}</p>
-                                        )}
-                                    </div>
-                                </div>
-                            ) : (
-                                <p className="text-xs text-gray-500">Оберіть аксесуар</p>
-                            )}
+                            <button
+                                type="button"
+                                onClick={() => setSelected(null)}
+                                aria-label="Скасувати вибір"
+                                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                            >
+                                <X size={14} />
+                            </button>
                         </div>
 
-                        <div className="flex flex-col gap-4 px-4 py-4 flex-1">
-                            {/* Тип білінгу */}
-                            <div className="space-y-1.5">
-                                <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Тип</p>
-                                <div className="flex flex-col gap-1">
-                                    {(['PER_FACADE_BASE', 'PER_FACADE_OPTIONAL'] as AccessoryBillingType[]).map(type => (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="flex flex-col gap-1.5">
+                                <span className="text-xs font-medium text-muted-foreground">Нарахування</span>
+
+                                {/* Сегменти рівної ширини — як перемикач розділів */}
+                                <div className="grid grid-flow-col auto-cols-fr gap-0.5 rounded-md bg-muted p-0.5">
+                                    {BILLING_ORDER.map(type => (
                                         <button
                                             key={type}
+                                            type="button"
+                                            aria-pressed={billingType === type}
                                             onClick={() => setBilling(type)}
-                                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors text-left ${
+                                            className={cn(
+                                                'rounded-sm px-2 py-1.5 text-xs font-medium transition-colors',
                                                 billingType === type
-                                                    ? 'bg-react/300 text-gray-100'
-                                                    : 'text-gray-400 hover:bg-react/500 hover:text-gray-200'
-                                            }`}
+                                                    ? 'bg-background text-foreground shadow-xs'
+                                                    : 'text-muted-foreground hover:text-foreground',
+                                            )}
                                         >
-                                            <div className={`w-3 h-3 rounded-full border-2 shrink-0 transition-colors ${
-                                                billingType === type ? 'border-gray-300 bg-gray-300' : 'border-gray-500'
-                                            }`} />
                                             {BILLING_LABELS[type]}
                                         </button>
                                     ))}
                                 </div>
+
+                                <span className="text-xs text-muted-foreground">
+                                    {billingType === 'PER_FACADE_BASE'
+                                        ? 'Додається до кожного фасаду'
+                                        : 'Тільки за умовою конструкції'}
+                                </span>
                             </div>
 
-                            {/* Кількість */}
-                            <div className="space-y-1.5">
-                                <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                                    К-сть / фасад
-                                </p>
+                            <div className="flex flex-col gap-1.5">
+                                <span className="text-xs font-medium text-muted-foreground">
+                                    Кількість на фасад, {ACCESSORY_UNIT_LABELS[selected.unit].toLowerCase()}
+                                </span>
+
                                 <div className="flex items-center gap-1">
                                     <button
+                                        type="button"
+                                        aria-label="Менше"
                                         onClick={() => setQty(q => Math.max(1, q - 1))}
-                                        className="w-7 h-7 rounded-md bg-react/500 hover:bg-react/400 text-gray-300 font-medium text-base transition-colors flex items-center justify-center"
+                                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                                     >
-                                        −
+                                        <Minus size={14} />
                                     </button>
-                                    <span className="flex-1 text-center text-sm font-semibold tabular-nums text-gray-100">
-                                        {qty}
-                                    </span>
+
+                                    {/* Поле, а не тільки кнопки: 16 гвинтів набирати кліками довго */}
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={qty}
+                                        onChange={e => setQty(Math.max(1, Number(e.target.value) || 1))}
+                                        className="h-9 min-w-0 flex-1 rounded-md border border-input bg-transparent px-2 text-center text-sm tabular-nums text-foreground shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                                    />
+
                                     <button
+                                        type="button"
+                                        aria-label="Більше"
                                         onClick={() => setQty(q => q + 1)}
-                                        className="w-7 h-7 rounded-md bg-react/500 hover:bg-react/400 text-gray-300 font-medium text-base transition-colors flex items-center justify-center"
+                                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                                     >
-                                        +
+                                        <Plus size={14} />
                                     </button>
                                 </div>
-                                {selected && (
-                                    <p className="text-[11px] text-gray-500 text-center">
-                                        {ACCESSORY_UNIT_LABELS[selected.unit].toLowerCase()}
-                                    </p>
-                                )}
                             </div>
                         </div>
 
-                        {/* Кнопка підтвердження */}
-                        <div className="px-3 pb-4">
-                            <button
-                                onClick={handleSubmit}
-                                disabled={!selected || isLinking}
-                                className="w-full py-2 rounded-lg bg-gray-600 hover:bg-gray-500 text-white text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
-                            >
-                                {isLinking
-                                    ? <><Loader2 size={13} className="animate-spin" /> Зберігаю...</>
-                                    : <><Plus size={13} /> Прив'язати</>
-                                }
-                            </button>
-                        </div>
+                        <Button
+                            type="button"
+                            onClick={handleSubmit}
+                            disabled={isLinking}
+                            className="w-full"
+                        >
+                            {isLinking ? (
+                                <><Loader2 size={14} className="animate-spin" /> Зберігаємо…</>
+                            ) : (
+                                <><Plus size={14} /> Прив&apos;язати</>
+                            )}
+                        </Button>
                     </div>
-                </div>
+                )}
             </Modal.Body>
         </Modal>
     );
@@ -357,7 +349,7 @@ const AccessoriesSection: React.FC<AccessoriesSectionProps> = ({ profileSystemId
         if (items.length === 0) return null;
         return (
             <div className="space-y-1.5">
-                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide px-1">{label}</p>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-1">{label}</p>
                 {items.map(item => (
                     <AccessoryRow
                         key={item.profileAccessoryId}
@@ -377,7 +369,7 @@ const AccessoriesSection: React.FC<AccessoriesSectionProps> = ({ profileSystemId
         <>
             <div className="space-y-3">
                 {accessories.length === 0 && (
-                    <p className="text-xs text-gray-400 text-center py-3">
+                    <p className="text-xs text-muted-foreground text-center py-3">
                         Немає прив'язаних аксесуарів
                     </p>
                 )}
@@ -387,7 +379,7 @@ const AccessoriesSection: React.FC<AccessoriesSectionProps> = ({ profileSystemId
 
                 <button
                     onClick={linkModal.onOpen}
-                    className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-dashed border-react/300 text-xs text-gray-400 hover:border-gray-400 hover:text-gray-600 hover:bg-react/500 transition-all mt-1"
+                    className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:border-ring hover:text-foreground hover:bg-accent/60 transition-all mt-1"
                 >
                     <Plus size={13} />
                     Прив'язати аксесуар

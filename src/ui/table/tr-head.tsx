@@ -1,15 +1,22 @@
-import {ComponentProps, FC} from "react";
-import {cn} from "../../helpers/cn";
+import { ComponentProps, FC } from 'react';
 
-type ITHeadProps = ComponentProps<'tr'>
+import { cn } from '@/helpers/cn';
 
-export  const TrHead: FC<ITHeadProps> = ({className, ...rest}) => {
+type ITHeadProps = ComponentProps<'tr'>;
+
+/** Рядок заголовків. Стилі клітинок задаємо звідси, бо екрани пишуть голі `<th>`. */
+export const TrHead: FC<ITHeadProps> = ({ className, ...rest }) => {
     return (
         <tr
-            className={cn("[&>th]:border [&>th]:border-react/400 [&>th]:px-4 [&>th]:py-2 [&>th]:text-left [&>th]:text-nowrap", className)}
+            className={cn(
+                // Липкий заголовок працює лише коли обгортка таблиці гортається
+                // (`maxHeight`); в інших випадках він просто нічого не робить
+                'sticky top-0 z-10 border-b border-border bg-muted',
+                '[&>th]:h-10 [&>th]:whitespace-nowrap [&>th]:px-3 [&>th]:text-left',
+                '[&>th]:text-xs [&>th]:font-medium [&>th]:text-muted-foreground',
+                className,
+            )}
             {...rest}
-        >
-
-        </tr>
+        />
     );
 };

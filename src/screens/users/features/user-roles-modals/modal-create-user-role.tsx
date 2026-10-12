@@ -20,7 +20,8 @@ type IModalCreateUserRoles = ModalProps & {
 const UserRolesCreateModal: FC<IModalCreateUserRoles> = ({role, ...props}) => {
     const isEditMode = !!role;
 
-    const {control, handleSubmit, reset, formState: {errors}, setValue} = useForm<IUserForm>({
+    const {control, handleSubmit, trigger, reset, formState: { errors, isValid }, setValue} = useForm<IUserForm>({
+        mode: 'onChange',
         defaultValues: {
             name: ''
         }
@@ -45,6 +46,18 @@ const UserRolesCreateModal: FC<IModalCreateUserRoles> = ({role, ...props}) => {
         }
     }, [props.open, reset]);
 
+    /**
+     * Кнопка збереження вимкнена, поки форма невалідна.
+     *
+     * У режимі редагування значення підставляються через `setValue`, а він не
+     * перераховує `isValid` — без явного `trigger` кнопка лишалась би сірою на
+     * вже заповненій формі. У режимі створення `trigger` не викликаємо: він би
+     * одразу підсвітив червоним усі порожні обов'язкові поля.
+     */
+    useEffect(() => {
+        if (props.open && isEditMode) void trigger();
+    }, [props.open, isEditMode, trigger]);
+
     const onSubmit = async (data: IUserForm) => {
         try {
             if (isEditMode && role) {
@@ -67,14 +80,14 @@ const UserRolesCreateModal: FC<IModalCreateUserRoles> = ({role, ...props}) => {
 
     return (
         <Modal {...props} className={cn(
-            'flex flex-col gap-2.5 max-w-[500px] min-h-10 rounded-base-mini mx-2 overflow-y-auto max-h-dvh h-auto',
+            'max-w-[500px]',
         )}
         >
             <Modal.Title className={'gap-2'} onClose={props.onClose}>
                 {isEditMode ? 'Редагувати роль' : 'Створити роль'}
             </Modal.Title>
 
-            <Modal.Body className={'flex flex-col gap-4 rounded-xl p-3'}>
+            <Modal.Body className={'flex flex-col gap-4'}>
                 <form onSubmit={handleSubmit(onSubmit)} className={'flex flex-col gap-4'}>
                     <div className={'relative flex flex-col gap-[5px] h-fit'}>
                         <p className="text-xs font-semibold pl-4">Назва</p>
@@ -88,7 +101,7 @@ const UserRolesCreateModal: FC<IModalCreateUserRoles> = ({role, ...props}) => {
                             }}
                         />
                         {errors.name && (
-                            <p className={'text-red-500 text-sm'}>{errors.name.message}</p>
+                            <p className={'text-destructive-foreground text-sm'}>{errors.name.message}</p>
                         )}
                     </div>
 
@@ -96,7 +109,7 @@ const UserRolesCreateModal: FC<IModalCreateUserRoles> = ({role, ...props}) => {
                         <Button
                             type="button"
                             onClick={props.onClose}
-                            color="red"
+                            color="blackNoneLine"
                             className="flex-1"
                             disabled={isPending}
                         >
@@ -106,7 +119,7 @@ const UserRolesCreateModal: FC<IModalCreateUserRoles> = ({role, ...props}) => {
                             type="submit"
                             color="greenDarkgreen"
                             className="flex-1"
-                            disabled={isPending}
+                            disabled={isPending || !isValid}
                         >
                             {isEditMode ? 'Оновити роль' : 'Створити роль'}
                         </Button>

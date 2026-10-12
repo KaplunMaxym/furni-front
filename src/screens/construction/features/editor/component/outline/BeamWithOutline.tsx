@@ -17,20 +17,7 @@ interface BeamWithOutlineProps {
     holeBlindDepth?: number;
 }
 
-export function BeamWithOutline({
-                                    name,
-                                    geometry,
-                                    position,
-                                    color,
-                                    metalness = 0.3,
-                                    roughness = 0.8,
-                                    isSelected,
-                                    onClick,
-                                    holePositions,
-                                    holeRadius,
-                                    beamDepth,
-                                    holeBlindDepth,
-                                }: BeamWithOutlineProps) {
+export function BeamWithOutline({name, geometry, position, color, metalness = 0.85, roughness = 0.35, isSelected, onClick, holePositions, holeRadius, beamDepth, holeBlindDepth}: BeamWithOutlineProps) {
     const meshRef    = useRef<THREE.Mesh>(null);
     const outlineRef = useRef<THREE.LineSegments | null>(null);
 
@@ -45,7 +32,7 @@ export function BeamWithOutline({
             return;
         }
 
-        const edges   = new THREE.EdgesGeometry(geometry);
+        const edges   = new THREE.EdgesGeometry(geometry, 25);
         const outline = new THREE.LineSegments(
             edges,
             new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 2 }),
@@ -74,7 +61,7 @@ export function BeamWithOutline({
                 receiveShadow
                 onClick={(e) => { e.stopPropagation(); onClick(); }}
             >
-                <meshStandardMaterial color={color} metalness={metalness} roughness={roughness} />
+                <meshStandardMaterial color={color} metalness={metalness} roughness={roughness} envMapIntensity={0.9} />
             </mesh>
 
             {holePositions && holeRadius && beamDepth && holeBlindDepth &&

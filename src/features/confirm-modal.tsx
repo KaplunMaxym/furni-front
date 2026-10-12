@@ -23,7 +23,7 @@ const ConfirmActionModal: FC<IConfirmActionModal> = (
         ...props
     }) => {
     return (
-        <Modal {...props} className={cn('flex flex-col gap-5 max-w-[420px] min-h-10 h-auto rounded-base-mini mx-2',)}>
+        <Modal {...props} className={cn('max-w-[420px]',)}>
             <Modal.Title className={'gap-1'} onClose={props.onClose}>{title}</Modal.Title>
             <Modal.Footer className={'gap-5 grid grid-cols-2'}>
                 <Button

@@ -1,15 +1,22 @@
 'use client'
 
 import { useSearchParams, useNavigate } from 'react-router';
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
+import { ArrowLeft } from 'lucide-react';
+
 import ConstructionEditor from "@/screens/construction/features/editor/ConstructionEditor";
 import { useConstruction } from "@/screens/construction/hooks/construction/useConstruction";
 import { useOrderDetails } from "@/screens/order/hooks/order/useOrderDetails";
-import {IConstruction} from "@/screens/construction/type/construction/IConstruction";
+import { IConstruction } from "@/screens/construction/type/construction/IConstruction";
+import { Button } from "@/ui/shadcn/button";
+import Loading from "@/ui/loading/Loading";
+import { useAuthStore } from "@/store/auth/authReducer";
+import { isDealerRole } from "@/config/RoleEnum";
 
 export default function ConstructionEditorPage() {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
+    const { role } = useAuthStore();
 
     const constructionId = Number(searchParams.get('id') ?? 0);
     const orderId = Number(searchParams.get('orderId') ?? 0);
@@ -17,44 +24,33 @@ export default function ConstructionEditorPage() {
     const { data: construction, isLoading, error, refetch } = useConstruction(constructionId);
     const { data: orderDetails, isLoading: isLoadingOrderDetails } = useOrderDetails(orderId);
 
-    const [showEditor, setShowEditor] = useState(false);
-
     useEffect(() => {
         refetch();
     }, [constructionId, refetch]);
 
-    useEffect(() => {
-        if (!isLoading && !isLoadingOrderDetails && construction && orderDetails) {
-            const timer = setTimeout(() => {
-                setShowEditor(true);
-            }, 3000);
-            return () => clearTimeout(timer);
-        }
-    }, [isLoading, isLoadingOrderDetails, construction, orderDetails]);
-
-    if (isLoading || isLoadingOrderDetails || !showEditor) {
+    /*
+     * Тут був `setTimeout` на три секунди перед показом редактора — навіть коли
+     * дані вже прийшли. Сцену Three.js він не прискорював: вона все одно
+     * будується після монтування. Тобто це були три секунди чекання ні за що.
+     */
+    if (isLoading || isLoadingOrderDetails) {
         return (
-            <div className="w-full h-screen flex items-center justify-center bg-gray-900">
-                <div className="text-white text-center">
-                    <div className="animate-spin w-10 h-10 border-4 border-white opacity-75 border-dashed rounded-full animate-spin-slow mx-auto mb-4"></div>
-                    <p>Завантаження редактора...</p>
-                </div>
+            <div className="flex h-dvh w-full flex-col items-center justify-center gap-3">
+                <Loading />
+                <p className="text-sm text-muted-foreground">Завантаження редактора…</p>
             </div>
         );
     }
 
     if (error || !construction || !orderDetails) {
         return (
-            <div className="w-full h-screen flex items-center justify-center bg-gray-900">
-                <div className="text-white text-center">
-                    <p className="text-red-500 mb-4">Помилка при завантаженні конструкції</p>
-                    <button
-                        onClick={() => navigate(`/order/${orderId}`)}
-                        className="px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded"
-                    >
-                        Повернутися до замовлення
-                    </button>
-                </div>
+            <div className="flex h-dvh w-full flex-col items-center justify-center gap-3">
+                <p className="text-sm text-destructive-foreground">
+                    Не вдалося завантажити конструкцію
+                </p>
+                <Button type="button" variant="outline" onClick={() => navigate(`/order/${orderId}`)}>
+                    <ArrowLeft /> Повернутися до замовлення
+                </Button>
             </div>
         );
     }
@@ -70,6 +66,13 @@ export default function ConstructionEditorPage() {
             order={orderDetails}
             onGoBack={() => navigate(`/order/${orderId}`)}
             onRefetch={handleRefetch}
+            /*
+             * Дилеру та сама сторінка відкривається як перегляд: модель без
+             * панелей і позначок, камера з тилу. Окрему сторінку для цього не
+             * робимо — сцена, завантаження й обробка помилок ті самі, і два
+             * майже однакові екрани довелося б правити парами.
+             */
+            readOnly={isDealerRole(role)}
         />
     );
 }

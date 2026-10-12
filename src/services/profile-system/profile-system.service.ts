@@ -17,13 +17,18 @@ import {IUnlinkMaterialForm} from "@/screens/profile-system/types/profile-system
 import {ILinkAccessoryForm} from "@/screens/profile-system/types/profile-system/ILinkAccessoryForm";
 import {IUnlinkAccessoryForm} from "@/screens/profile-system/types/profile-system/IUnlinkAccessoryForm";
 
+export interface IProfileSystemQueryParams extends IQueryPagination {
+    /** Збіг за назвою, кодом або кодом 1С. */
+    search?: string;
+}
+
 export const ProfileSystemService = {
     getProfileSystemSimple: () =>
         instance({
             url: getProfileSystemUrl(),
             method: 'GET'
         }),
-    getProfileSystemQuery: (params: IQueryPagination) =>
+    getProfileSystemQuery: (params: IProfileSystemQueryParams) =>
         instance({
             url: getProfileSystemQueryUrl(),
             method: 'GET',

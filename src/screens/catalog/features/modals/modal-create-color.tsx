@@ -5,6 +5,7 @@ import { cn } from '@/helpers/cn';
 import { useForm } from 'react-hook-form';
 import Input from '@/ui/input/Input';
 import Button from '@/ui/button/Button';
+import { Checkbox } from '@/ui/shadcn/checkbox';
 import Loading from '@/ui/loading/Loading';
 import { useColorCreateMutation } from '@/screens/catalog/hooks/useColorCreateMutation';
 import { useColorUpdateMutation } from '@/screens/catalog/hooks/useColorUpdateMutation';
@@ -19,8 +20,9 @@ type Props = ModalProps & {
 const ColorCreateModal: FC<Props> = ({ color, ...props }) => {
     const isEditMode = !!color;
 
-    const { control, handleSubmit, reset, setValue, watch, formState: { errors } } =
+    const { control, handleSubmit, trigger, reset, setValue, watch, formState: { errors, isValid } } =
         useForm<IColorForm>({
+            mode: 'onChange',
             defaultValues: {
                 name: '',
                 code: '',
@@ -56,6 +58,10 @@ const ColorCreateModal: FC<Props> = ({ color, ...props }) => {
         if (!props.open) reset();
     }, [props.open, reset]);
 
+    useEffect(() => {
+        if (props.open && isEditMode) void trigger();
+    }, [props.open, isEditMode, trigger]);
+
     const onSubmit = async (data: IColorForm) => {
         try {
             if (isEditMode && color) {
@@ -74,18 +80,18 @@ const ColorCreateModal: FC<Props> = ({ color, ...props }) => {
         <Modal
             {...props}
             className={cn(
-                'flex flex-col gap-2.5 max-w-[500px] min-h-10 rounded-base-mini mx-2 overflow-y-auto max-h-dvh h-auto',
+                'max-w-[500px]',
             )}
         >
             <Modal.Title className="gap-2" onClose={props.onClose}>
                 {isEditMode ? 'Редагувати колір' : 'Створити колір'}
             </Modal.Title>
 
-            <Modal.Body className="flex flex-col gap-4 rounded-xl p-3">
+            <Modal.Body className="flex flex-col gap-4">
                 <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
 
                     <div className="relative flex flex-col gap-[5px] h-fit">
-                        <p className="text-xs font-semibold pl-4">Назва *</p>
+                        <p className="text-xs font-semibold pl-4">Назва</p>
                         <Input
                             control={control}
                             name="name"
@@ -94,7 +100,7 @@ const ColorCreateModal: FC<Props> = ({ color, ...props }) => {
                             rules={{ required: 'Назва обов\'язкова' }}
                         />
                         {errors.name && (
-                            <p className="text-red-500 text-sm">{errors.name.message}</p>
+                            <p className="text-destructive-foreground text-sm">{errors.name.message}</p>
                         )}
                     </div>
 
@@ -108,35 +114,66 @@ const ColorCreateModal: FC<Props> = ({ color, ...props }) => {
                         />
                     </div>
 
-                    <div className="relative flex flex-col gap-[5px] h-fit">
-                        <p className="text-xs font-semibold pl-4">Типи використання</p>
-                        <div className="flex gap-2 flex-wrap pl-1">
-                            {COLOR_TYPES.map(type => {
-                                const isSelected = selectedTypes?.includes(type);
+                    {/*
+                      * Типи використання — список прапорців, а не кольорові чипи.
+                      *
+                      * Чипи були зашиті в кольори старого проєкту: олива
+                      * `#596B00` для обраного, `#D1D1D1` для рамки. Тему вони
+                      * не читали взагалі — у темній це були три салатові пігулки
+                      * з чужого інтерфейсу, у світлій сірий текст на сірому.
+                      *
+                      * Головне ж — стан читався тільки кольором: у чипа немає
+                      * ні прапорця, ні галочки, тож «обрано» від «не обрано»
+                      * відрізнялось лише відтінком, а це три пункти, які
+                      * визначають, де колір узагалі можна вибрати.
+                      */}
+                    <div className="flex flex-col gap-[5px]">
+                        <p className="pl-4 text-xs font-semibold">Типи використання</p>
+
+                        <div className="overflow-hidden rounded-lg border border-input">
+                            {COLOR_TYPES.map((type, index) => {
+                                const isSelected = !!selectedTypes?.includes(type);
+
                                 return (
                                     <button
                                         key={type}
                                         type="button"
                                         onClick={() => toggleType(type)}
                                         className={cn(
-                                            'px-3 py-1.5 rounded-full text-sm border transition-colors',
-                                            isSelected
-                                                ? 'bg-[#596B00] text-[#fff] border-[#596B00]'
-                                                : 'bg-transparent text-[#727272] border-[#D1D1D1] hover:border-[#596B00]'
+                                            'flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors',
+                                            'hover:bg-accent/60',
+                                            index > 0 && 'border-t border-border',
+                                            isSelected ? 'text-foreground' : 'text-muted-foreground',
                                         )}
                                     >
+                                        {/*
+                                          * `pointer-events-none`: натиск обробляє
+                                          * рядок цілком, і власний обробник
+                                          * прапорця перемкнув би тип двічі
+                                          */}
+                                        <span className="pointer-events-none">
+                                            <Checkbox
+                                                state={isSelected ? 'all' : 'none'}
+                                                onChange={() => {}}
+                                                aria-label={COLOR_TYPE_LABELS[type]}
+                                            />
+                                        </span>
                                         {COLOR_TYPE_LABELS[type]}
                                     </button>
                                 );
                             })}
                         </div>
+
+                        <p className="pl-4 text-xs text-muted-foreground">
+                            Де цей колір можна обрати: у профілі, ручці чи завісі
+                        </p>
                     </div>
 
                     <div className="flex gap-3 mt-4">
                         <Button
                             type="button"
                             onClick={props.onClose}
-                            color="red"
+                            color="blackNoneLine"
                             className="flex-1"
                             disabled={isPending}
                         >
@@ -146,7 +183,7 @@ const ColorCreateModal: FC<Props> = ({ color, ...props }) => {
                             type="submit"
                             color="greenDarkgreen"
                             className="flex-1"
-                            disabled={isPending}
+                            disabled={isPending || !isValid}
                         >
                             {isEditMode ? 'Оновити колір' : 'Створити колір'}
                         </Button>

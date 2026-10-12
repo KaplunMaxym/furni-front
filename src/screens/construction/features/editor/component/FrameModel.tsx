@@ -1,10 +1,13 @@
 'use client';
 
 import * as THREE from 'three';
+import { Evaluator, Brush, SUBTRACTION } from 'three-bvh-csg';
+import {HingeNotchesMesh} from "@/screens/construction/features/editor/component/mesh/HingeNotchesMesh";
 import { useEffect, useState, useMemo } from 'react';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ConstructionMesh, ViewMode } from '@/screens/construction/type/editor/ThreeMesh';
-import {BEAM_COLORS, BEAM_NAMES, PART_PRIORITY} from '@/screens/construction/constants/beamConstants';
+import {BEAM_COLORS, BEAM_NAMES, PART_PRIORITY, CODE_COLORS} from '@/screens/construction/constants/beamConstants';
+import type {BeamSlotLabels} from '@/screens/construction/type/editor/BeamSlots';
 import {
     DrillDefaultParameters, HingeDefaultParameters,
     MillDefaultParameters,
@@ -15,10 +18,14 @@ import {ImportedModelWrapper} from "@/screens/construction/features/editor/compo
 import {BeamWithOutline} from "@/screens/construction/features/editor/component/outline/BeamWithOutline";
 import {HandleMesh} from "@/screens/construction/features/editor/component/mesh/HandleMesh";
 import {GlassMesh} from "@/screens/construction/features/editor/component/mesh/GlassMesh";
-import {HingeNotchesMesh} from "@/screens/construction/features/editor/component/mesh/HingeNotchesMesh";
 import {HingeMesh} from "@/screens/construction/features/editor/component/mesh/HingeMesh";
+import {ShelfLedMesh} from "@/screens/construction/features/editor/component/mesh/ShelfLedMesh";
 
 interface FrameModelProps {
+    beamLabels?: BeamSlotLabels;
+    hasHinge?: boolean;
+    isShelf?: boolean;
+    operationParams?: Record<string, unknown>;
     frameWidth: number;
     frameHeight: number;
     beamThickness: number;
@@ -41,6 +48,52 @@ interface FrameModelProps {
     hingeParams?: HingeDefaultParameters;
     millParams?: MillDefaultParameters;
     drillParams?: DrillDefaultParameters;
+}
+
+interface BeamPocket {
+    x: number; y: number; z: number;
+    w: number; h: number; d: number;
+    geometry?: THREE.BufferGeometry;
+}
+
+function subtractPockets(geometry: THREE.BufferGeometry, pockets: BeamPocket[]): THREE.BufferGeometry {
+    if (pockets.length === 0) return geometry;
+
+    try {
+        const evaluator = new Evaluator();
+        evaluator.attributes = ['position', 'normal'];
+
+        let base = new Brush(geometry);
+        base.updateMatrixWorld();
+
+        for (const p of pockets) {
+            const tool = new Brush(p.geometry ?? new THREE.BoxGeometry(p.w, p.h, p.d));
+            tool.position.set(p.x, p.y, p.z);
+            tool.updateMatrixWorld();
+            base = evaluator.evaluate(base, tool, SUBTRACTION);
+        }
+
+        base.geometry.computeVertexNormals();
+        return base.geometry;
+    } catch (e) {
+        console.warn('CSG для пазів не вдався, лишаю суцільну балку', e);
+        return geometry;
+    }
+}
+
+function extrudeBeam(shape: THREE.Shape, depth: number): THREE.ExtrudeGeometry {
+    const bevelThickness = Math.min(0.5, depth * 0.04);
+    const bevelSize      = bevelThickness;
+
+    return new THREE.ExtrudeGeometry(shape, {
+        depth: Math.max(depth - bevelThickness * 2, depth * 0.5),
+        bevelEnabled: true,
+        bevelThickness,
+        bevelSize,
+        bevelOffset: -bevelSize,
+        bevelSegments: 2,
+        curveSegments: 8,
+    });
 }
 
 function createHorizontalBeam45(
@@ -95,7 +148,7 @@ function buildHorizontalGeometry(
     for (let i = 0; i < endCount;   i++) raw.push([width - (endOffsets?.[i]   ?? edgeOffset + i * spacing), holeY]);
     handleHolePositions?.forEach(x => raw.push([x, holeY]));
 
-    const geometry = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
+    const geometry = extrudeBeam(shape, depth);
     geometry.center();
 
     return {
@@ -156,7 +209,7 @@ function buildVerticalGeometry(
     for (let i = 0; i < startCount; i++) raw.push([holeX, startOffsets?.[i] ?? edgeOffset + i * spacing]);
     handleHolePositions?.forEach(y => raw.push([holeX, y]));
 
-    const geometry = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
+    const geometry = extrudeBeam(shape, depth);
     geometry.center();
 
     return {
@@ -199,7 +252,7 @@ function createHandleProfileBeam(
     for (let i = 0; i < startCount; i++) raw.push([effectiveHoleX, startOffsets?.[i] ?? edgeOffset + i * spacing]);
     handleHolePositions?.forEach(y => raw.push([effectiveHoleX, y]));
 
-    const geometry = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
+    const geometry = extrudeBeam(shape, depth);
     geometry.center();
 
     return {
@@ -272,7 +325,17 @@ export function FrameModel({
                                hingeSide, hingeParams,
                                hasHandle, handleSide, handleOffset, handlePosition,
                                millParams, drillParams,
+                               beamLabels, hasHinge, isShelf, operationParams,
                            }: FrameModelProps) {
+    const SLOT = {
+        top:    beamLabels?.top    ?? BEAM_NAMES.TOP,
+        bottom: beamLabels?.bottom ?? BEAM_NAMES.BOTTOM,
+        left:   beamLabels?.left   ?? BEAM_NAMES.LEFT,
+        right:  beamLabels?.right  ?? BEAM_NAMES.RIGHT,
+    };
+    const slotColor = (slot: keyof typeof SLOT, code: string) =>
+        BEAM_COLORS[SLOT[slot]] ?? CODE_COLORS[code] ?? 0xC0C0C0;
+
     const [meshes, setMeshes] = useState<THREE.Mesh[]>([]);
     const [selectedModelPart, setSelectedModelPart] = useState<string | null>(null);
 
@@ -343,11 +406,8 @@ export function FrameModel({
 
     const handleHoles = getHandleHolePositions();
 
-    const isHingeProfile = millParams?.ignoreHandleSide === true;
+    const isHingeProfile = hasHinge ?? (millParams?.ignoreHandleSide === true);
 
-    // ── Визначаємо, яка вертикальна балка є «балкою-ручкою» ──────────────────
-    // Якщо завіси зліва (hingeSide === 'LEFT') → балка-ручка справа (RIGHT)
-    // Якщо завіси справа (hingeSide === 'RIGHT') → балка-ручка зліва (LEFT)
     const handleProfileSide: 'LEFT' | 'RIGHT' | null =
         isHingeProfile && hingeSide === 'LEFT'  ? 'RIGHT' :
             isHingeProfile && hingeSide === 'RIGHT' ? 'LEFT'  : null;
@@ -386,10 +446,96 @@ export function FrameModel({
             : createVerticalBeam45(frameHeight, beamThickness, beamThickness, side === 'LEFT', sc, ec, edge?.offsetY, so, eo, hh);
     };
 
+    const groovePocketsFor = (side: 'LEFT' | 'RIGHT', beamLength: number): BeamPocket[] => {
+        const groove = (operationParams as Record<string, Record<string, {
+            startX?: number; width?: number; endOffsetX?: number; offsetX?: number;
+        }>> | undefined)?.GROOVE_MILL?.[side];
+        if (!groove) return [];
+
+        const startX     = Number(groove.startX ?? 0);
+        const width      = Number(groove.width ?? 0);
+        const endOffsetX = Number(groove.endOffsetX ?? 0);
+        const offsetX    = Number(groove.offsetX ?? 0);
+        if (!width) return [];
+
+        const bt     = beamThickness;
+        const along  = Math.abs(width);   // довжина паза вздовж балки
+        const height = bt * (7 / 36);     // 7 мм по висоті профілю
+        const depth  = bt * (5 / 36);     // 5 мм углиб від бічної грані
+        const half   = beamLength / 2;
+
+        // Ріжемо в зовнішню бічну грань, ближче до низу балки.
+        const outward = side === 'LEFT' ? -1 : 1;
+        const x = outward * (bt / 2 - depth / 2);
+        const z = -bt / 2 + height / 2;
+
+        return [
+            startX + width / 2 + offsetX,
+            beamLength - endOffsetX + width / 2 + offsetX,
+        ]
+            .filter(c => c > 0 && c < beamLength)
+            .map(c => ({ x, y: -half + c, z, w: depth, h: along, d: height }));
+    };
+
+    const wirePocketFor = (side: 'LEFT' | 'RIGHT', beamLength: number): BeamPocket[] => {
+        const wire = (operationParams as Record<string, Record<string, {
+            inset?: number; fromEnd?: boolean;
+        }>> | undefined)?.WIRE_MILL?.[side];
+        if (!wire) return [];
+
+        const inset = Number(wire.inset ?? 0);
+        if (!inset) return [];
+
+        const bt      = beamThickness;
+        const depth   = bt * (10 / 36);          // 10 мм углиб від грані
+        const narrow  = bt * (10.578 / 36);      // -8.222 .. -18.800
+        const wide    = bt * (14.102 / 36);      // -4.698 .. -18.800
+        const centerZ = -bt / 2 + wide / 2;      // виріз біля низу балки
+
+        // Трапеція в площині «вздовж балки × висота», далі витягуємо її вглиб.
+        const shape = new THREE.Shape();
+        shape.moveTo(-inset / 2, -narrow / 2);
+        shape.lineTo(-inset / 2,  narrow / 2);
+        shape.lineTo( inset / 2,  wide / 2);
+        shape.lineTo( inset / 2, -wide / 2);
+        shape.lineTo(-inset / 2, -narrow / 2);
+
+        const geometry = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
+        geometry.translate(0, 0, -depth / 2);
+        // Форма побудована в площині «вздовж × висота» і витягнута по Z.
+        // Двома поворотами ставимо її в осі балки: витяжка → X (товщина),
+        // «вздовж» → Y, «висота» → Z.
+        geometry.rotateY(Math.PI / 2);
+        geometry.rotateX(Math.PI / 2);
+
+        const outward = side === 'LEFT' ? -1 : 1;
+        // fromEnd: виріз біля дальнього торця, інакше — біля ближнього.
+        const alongCenter = wire.fromEnd !== false
+            ? beamLength / 2 - inset / 2
+            : -beamLength / 2 + inset / 2;
+
+        return [{
+            x: outward * (bt / 2 - depth / 2),
+            y: alongCenter,
+            z: centerZ,
+            w: depth, h: inset, d: wide,
+            geometry,
+        }];
+    };
+
+    const carveGrooves = (side: 'LEFT' | 'RIGHT', result: BeamGeometryResult): BeamGeometryResult => {
+        const pockets = [
+            ...groovePocketsFor(side, frameHeight),
+            ...wirePocketFor(side, frameHeight),
+        ];
+        if (pockets.length === 0) return result;
+        return { ...result, geometry: subtractPockets(result.geometry, pockets) };
+    };
+
     const topR    = buildBeam('TOP',    topEdge);
     const bottomR = buildBeam('BOTTOM', bottomEdge);
-    const leftR   = buildBeam('LEFT',   leftEdge);
-    const rightR  = buildBeam('RIGHT',  rightEdge);
+    const leftR   = carveGrooves('LEFT',  buildBeam('LEFT',  leftEdge));
+    const rightR  = carveGrooves('RIGHT', buildBeam('RIGHT', rightEdge));
 
     const hw = frameWidth  / 2;
     const hh_ = frameHeight / 2;
@@ -415,62 +561,58 @@ export function FrameModel({
     const leftX  = -hw + bt / 2;
     const rightX =  hw - bt / 2;
 
-    console.log('ignoreHandleSide', millParams?.ignoreHandleSide);
-    console.log('handleProfileSide', handleProfileSide);
-
     return (
         <>
             <BeamWithOutline
-                name={BEAM_NAMES.TOP}
+                name={SLOT.top}
                 geometry={topR.geometry}
                 position={[0, hh_ - bt / 2, 0]}
-                color={BEAM_COLORS[BEAM_NAMES.TOP]}
-                isSelected={selectedBeamName === BEAM_NAMES.TOP}
-                onClick={() => onBeamClick?.(BEAM_NAMES.TOP)}
+                color={slotColor('top', 'TOP')}
+                isSelected={selectedBeamName === SLOT.top}
+                onClick={() => onBeamClick?.(SLOT.top)}
                 holePositions={topR.holePositions}
                 holeRadius={holeRadius}
                 beamDepth={bt}
                 holeBlindDepth={blindDepth}
             />
             <BeamWithOutline
-                name={BEAM_NAMES.BOTTOM}
+                name={SLOT.bottom}
                 geometry={bottomR.geometry}
                 position={[0, -hh_ + bt / 2, 0]}
-                color={BEAM_COLORS[BEAM_NAMES.BOTTOM]}
-                isSelected={selectedBeamName === BEAM_NAMES.BOTTOM}
-                onClick={() => onBeamClick?.(BEAM_NAMES.BOTTOM)}
+                color={slotColor('bottom', 'BOTTOM')}
+                isSelected={selectedBeamName === SLOT.bottom}
+                onClick={() => onBeamClick?.(SLOT.bottom)}
                 holePositions={bottomR.holePositions}
                 holeRadius={holeRadius}
                 beamDepth={bt}
                 holeBlindDepth={blindDepth}
             />
             <BeamWithOutline
-                name={BEAM_NAMES.LEFT}
+                name={SLOT.left}
                 geometry={leftR.geometry}
                 position={[leftX, 0, 0]}
-                color={BEAM_COLORS[BEAM_NAMES.LEFT]}
-                isSelected={selectedBeamName === BEAM_NAMES.LEFT}
-                onClick={() => onBeamClick?.(BEAM_NAMES.LEFT)}
+                color={slotColor('left', 'LEFT')}
+                isSelected={selectedBeamName === SLOT.left}
+                onClick={() => onBeamClick?.(SLOT.left)}
                 holePositions={leftR.holePositions}
                 holeRadius={holeRadius}
                 beamDepth={bt}
                 holeBlindDepth={blindDepth}
             />
             <BeamWithOutline
-                name={BEAM_NAMES.RIGHT}
+                name={SLOT.right}
                 geometry={rightR.geometry}
                 position={[rightX, 0, 0]}
-                color={BEAM_COLORS[BEAM_NAMES.RIGHT]}
-                isSelected={selectedBeamName === BEAM_NAMES.RIGHT}
-                onClick={() => onBeamClick?.(BEAM_NAMES.RIGHT)}
+                color={slotColor('right', 'RIGHT')}
+                isSelected={selectedBeamName === SLOT.right}
+                onClick={() => onBeamClick?.(SLOT.right)}
                 holePositions={rightR.holePositions}
                 holeRadius={holeRadius}
                 beamDepth={bt}
                 holeBlindDepth={blindDepth}
             />
 
-            {/* Профіль-ручка на всю висоту (профільна система завіс) */}
-            {isHingeProfile && handleProfileSide && (
+            {!isShelf && isHingeProfile && handleProfileSide && (
                 <HandleProfileMesh
                     beamThickness={bt}
                     frameWidth={frameWidth}
@@ -479,7 +621,7 @@ export function FrameModel({
                 />
             )}
 
-            {!isHingeProfile && (
+            {!isShelf && !isHingeProfile && (
                 <HandleMesh
                     beamThickness={bt}
                     frameWidth={frameWidth}
@@ -493,7 +635,7 @@ export function FrameModel({
                 />
             )}
 
-            {isHingeProfile && (
+            {!isShelf && isHingeProfile && (
                 <HingeMesh
                     frameWidth={frameWidth}
                     frameHeight={frameHeight}
@@ -513,14 +655,25 @@ export function FrameModel({
                 onClick={() => handleBeamClick('Скло')}
             />
 
-            <HingeNotchesMesh
-                frameWidth={frameWidth}
-                frameHeight={frameHeight}
-                beamThickness={bt}
-                handleSide={handleSide}
-                hasHandle={hasHandle}
-                millParams={millParams}
-            />
+            {!isShelf && (
+                <HingeNotchesMesh
+                    frameWidth={frameWidth}
+                    frameHeight={frameHeight}
+                    beamThickness={bt}
+                    handleSide={handleSide}
+                    hasHandle={hasHandle}
+                    millParams={millParams}
+                />
+            )}
+
+            {isShelf && (
+                <ShelfLedMesh
+                    frameWidth={frameWidth}
+                    frameHeight={frameHeight}
+                    beamThickness={bt}
+                />
+            )}
+
         </>
     );
 }

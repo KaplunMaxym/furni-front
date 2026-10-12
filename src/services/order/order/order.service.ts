@@ -9,8 +9,15 @@ import {
 import instance from "@/services/api/interceptors.api";
 import {IOrderForm} from "@/screens/order/types/order/IOrderForm";
 
+export interface IOrderQueryParams extends IQueryPagination {
+    /** Збіг за номером або назвою замовлення. */
+    search?: string;
+    clientId?: number | string;
+    statusId?: number | string;
+}
+
 export const OrderService = {
-    getAllOrder: (params: IQueryPagination) =>
+    getAllOrder: (params: IOrderQueryParams) =>
         instance({
             url: getOrdersUrl(),
             method: 'GET',

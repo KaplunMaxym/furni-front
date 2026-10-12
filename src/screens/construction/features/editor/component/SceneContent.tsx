@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect } from 'react';
+import type { BeamSlotLabels } from '@/screens/construction/type/editor/BeamSlots';
 import { TransformControls } from '@react-three/drei';
 import * as THREE from 'three';
 import {
@@ -12,8 +13,13 @@ import { FrameModel } from './FrameModel';
 import {ModelDimensions} from "@/screens/construction/type/editor/Canvas3DAdvanced";
 import { HandleSideEnum } from "@/screens/construction/type/construction/IConstruction";
 import {CameraAndControls} from "@/screens/construction/features/editor/component/control/CameraAndControls";
+import { SHELF_ROTATION } from "@/screens/construction/constants/beamConstants";
 
 interface SceneContentProps extends Canvas3DAdvancedProps {
+    beamLabels?: BeamSlotLabels;
+    hasHinge?: boolean;
+    isShelf?: boolean;
+    operationParams?: Record<string, unknown>;
     groupRef: React.MutableRefObject<THREE.Group | null>;
     cutParams?: { leftAngle?: number };
     selectedBeamName?: string | null;
@@ -26,6 +32,8 @@ interface SceneContentProps extends Canvas3DAdvancedProps {
     handleOffset?: number;
     handlePosition?: number;
     hideDimensions?: boolean;
+    /** Дивитись на виріб із тилу — режим перегляду дилером. */
+    viewFromBack?: boolean;
     hingeSide?: HandleSideEnum;
     hingeParams?: HingeDefaultParameters;
     millParams?: MillDefaultParameters;
@@ -33,16 +41,13 @@ interface SceneContentProps extends Canvas3DAdvancedProps {
 }
 
 export function SceneContent({
+    beamLabels, hasHinge, isShelf, operationParams,
                                  frameWidth, frameHeight, beamThickness,
                                  cutParams, viewMode, transformMode,
                                  onMeshesUpdate, onInfoUpdate, onBeamClick,
                                  groupRef, selectedBeamName,
                                  hingeParams,
-                                 hingeSide,
-                                 importedModel, originalDimensions, modelLoading, modelError,
-                                 hasHandle, handleSide, handleOffset, handlePosition,
-                                 hideDimensions, millParams, drillParams,
-                             }: SceneContentProps) {
+                                 hingeSide, importedModel, originalDimensions, modelLoading, modelError, hasHandle, handleSide, handleOffset, handlePosition, hideDimensions, viewFromBack, millParams, drillParams}: SceneContentProps) {
     const transformRef = useRef<React.ComponentRef<typeof TransformControls>>(null);
 
     useEffect(() => {
@@ -54,10 +59,14 @@ export function SceneContent({
 
     return (
         <>
-            <CameraAndControls frameWidth={frameWidth} frameHeight={frameHeight} beamThickness={beamThickness} />
+            <CameraAndControls frameWidth={frameWidth} frameHeight={frameHeight} beamThickness={beamThickness} isShelf={isShelf} fromBack={viewFromBack} />
 
-            <group ref={groupRef}>
+            <group ref={groupRef} rotation={isShelf ? SHELF_ROTATION : undefined}>
                 <FrameModel
+                    beamLabels={beamLabels}
+                    hasHinge={hasHinge}
+                    isShelf={isShelf}
+                    operationParams={operationParams}
                     frameWidth={frameWidth}
                     frameHeight={frameHeight}
                     beamThickness={beamThickness}

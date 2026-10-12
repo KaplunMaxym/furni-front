@@ -10,6 +10,8 @@ import { useCurrencyRateCreateMutation } from '@/screens/currency-rate/hooks/use
 import { useCurrencyRateUpdateMutation } from '@/screens/currency-rate/hooks/useCurrencyRateUpdateMutation';
 import {ICurrencyRateForm} from "@/screens/currency-rate/type/ICurrencyRateForm";
 import {ICurrencyRate} from "@/screens/currency-rate/type/ICurrencyRate";
+import DatePicker from "@/componets/date-picker/DatePicker";
+import {toISODate} from "@/componets/date-picker/date";
 
 type Props = ModalProps & {
     currencyRate?: ICurrencyRate | null;
@@ -20,11 +22,12 @@ const CurrencyRateCreateModal: FC<Props> = ({ currencyRate, ...props }) => {
 
     const {
         control,
-        handleSubmit,
+        handleSubmit, trigger,
         reset,
         setValue,
-        formState: { errors },
+        formState: { errors, isValid },
     } = useForm<ICurrencyRateForm>({
+        mode: 'onChange',
         defaultValues: {
             date: '',
             rate: 0,
@@ -51,6 +54,18 @@ const CurrencyRateCreateModal: FC<Props> = ({ currencyRate, ...props }) => {
         if (!props.open) reset();
     }, [props.open, reset]);
 
+    /**
+     * Кнопка збереження вимкнена, поки форма невалідна.
+     *
+     * У режимі редагування значення підставляються через `setValue`, а він не
+     * перераховує `isValid` — без явного `trigger` кнопка лишалась би сірою на
+     * вже заповненій формі. У режимі створення `trigger` не викликаємо: він би
+     * одразу підсвітив червоним усі порожні обов'язкові поля.
+     */
+    useEffect(() => {
+        if (props.open && isEditMode) void trigger();
+    }, [props.open, isEditMode, trigger]);
+
     const onSubmit = async (data: ICurrencyRateForm) => {
         try {
             if (isEditMode && currencyRate) {
@@ -68,33 +83,35 @@ const CurrencyRateCreateModal: FC<Props> = ({ currencyRate, ...props }) => {
     return (
         <Modal
             {...props}
-            className={cn(
-                'flex flex-col gap-2.5 max-w-[500px] min-h-10 rounded-base-mini mx-2 overflow-y-auto max-h-dvh h-auto',
-            )}
+            // Три коротких поля — дата, валюта, курс. На 500 px вони
+            // розтягувались на пів екрана, хоч ширшими за календар бути не мають
+            className={cn('max-w-[360px]')}
         >
             <Modal.Title className="gap-2" onClose={props.onClose}>
                 {isEditMode ? 'Редагувати курс валюти' : 'Створити курс валюти'}
             </Modal.Title>
 
-            <Modal.Body className="flex flex-col gap-4 rounded-xl p-3">
+            <Modal.Body className="flex flex-col gap-4">
                 <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
 
                     <div className="relative flex flex-col gap-[5px] h-fit">
-                        <p className="text-xs font-semibold pl-4">Дата *</p>
-                        <Input
+                        <p className="text-xs font-semibold pl-4">Дата</p>
+                        {/* Курс заднім числом сенсу не має, тож майбутнє відрізане */}
+                        <DatePicker
                             control={control}
                             name="date"
-                            type="date"
+                            max={toISODate(new Date())}
+                            clearable={false}
                             classNameContainer="w-full"
                             rules={{ required: 'Дата обов\'язкова' }}
                         />
                         {errors.date && (
-                            <p className="text-red-500 text-sm">{errors.date.message}</p>
+                            <p className="text-destructive-foreground text-sm">{errors.date.message}</p>
                         )}
                     </div>
 
                     <div className="relative flex flex-col gap-[5px] h-fit">
-                        <p className="text-xs font-semibold pl-4">Валюта *</p>
+                        <p className="text-xs font-semibold pl-4">Валюта</p>
                         <Input
                             control={control}
                             name="currency"
@@ -103,12 +120,12 @@ const CurrencyRateCreateModal: FC<Props> = ({ currencyRate, ...props }) => {
                             rules={{ required: 'Валюта обов\'язкова' }}
                         />
                         {errors.currency && (
-                            <p className="text-red-500 text-sm">{errors.currency.message}</p>
+                            <p className="text-destructive-foreground text-sm">{errors.currency.message}</p>
                         )}
                     </div>
 
                     <div className="relative flex flex-col gap-[5px] h-fit">
-                        <p className="text-xs font-semibold pl-4">Курс *</p>
+                        <p className="text-xs font-semibold pl-4">Курс</p>
                         <Input
                             control={control}
                             name="rate"
@@ -121,7 +138,7 @@ const CurrencyRateCreateModal: FC<Props> = ({ currencyRate, ...props }) => {
                             }}
                         />
                         {errors.rate && (
-                            <p className="text-red-500 text-sm">{errors.rate.message}</p>
+                            <p className="text-destructive-foreground text-sm">{errors.rate.message}</p>
                         )}
                     </div>
 
@@ -129,7 +146,7 @@ const CurrencyRateCreateModal: FC<Props> = ({ currencyRate, ...props }) => {
                         <Button
                             type="button"
                             onClick={props.onClose}
-                            color="red"
+                            color="blackNoneLine"
                             className="flex-1"
                             disabled={isPending}
                         >
@@ -139,7 +156,7 @@ const CurrencyRateCreateModal: FC<Props> = ({ currencyRate, ...props }) => {
                             type="submit"
                             color="greenDarkgreen"
                             className="flex-1"
-                            disabled={isPending}
+                            disabled={isPending || !isValid}
                         >
                             {isEditMode ? 'Оновити курс' : 'Створити курс'}
                         </Button>

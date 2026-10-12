@@ -1,3 +1,4 @@
+import MainLayout from "@/ui/layouts/main-layout/MainLatout";
 import useModal from "@/hooks/useModal";
 import React, { useState } from "react";
 import Button from "@/ui/button/Button";
@@ -6,22 +7,22 @@ import { Table } from "@/ui/table/table";
 import { TrHead } from "@/ui/table/tr-head";
 import { TrBody } from "@/ui/table/tr-body";
 import { cn } from "@/helpers/cn";
-import { EditSvg, refreshIcon } from "@/assets";
+import { refreshIcon } from "@/assets";
 import { useUsersQuery } from "@/screens/users/hooks/user/useUsersQuery";
-import ButtonDel from "@/ui/button/ButtonDel";
 import { useUserDelMutation } from "@/screens/users/hooks/user/useUserDelMutation";
 import UserCreateModal from "@/screens/users/features/user-modals/modal-create-user";
 import { IUser } from "@/screens/users/types/user/IUser";
 import { useUsersFilterStore } from "@/store/user/user-store/useUsersFilter";
-import SelectorSearch from "@/componets/select/virtualized-list/SelectorSearch";
 import PaginationControl from "@/componets/pagination/Pagination";
-import ToggleUser from "@/screens/users/shared/toggle-user";
+import RowActionsCell from '@/ui/table/RowActionsCell';
+import PageHeader from "@/ui/page-header/PageHeader";
+import SortableTh from '@/ui/table/SortableTh';
 
 const Users = () => {
     const { data: dataUsers, isPending: isPendingDomain } = useUsersQuery();
     const { mutateAsync: mutateAsyncUserDel } = useUserDelMutation();
 
-    const { page, setPage, limit, setLimit } = useUsersFilterStore();
+    const { page, setPage, limit, setLimit, sortBy, sortOrder, setSort} = useUsersFilterStore();
     const modalCreateUser = useModal();
 
     const [selectedUser, setSelectedUser] = useState<IUser | null>(null);
@@ -33,7 +34,7 @@ const Users = () => {
         limit: 20,
     };
 
-    const { totalPages, currentPage } = meta;
+    const { totalItems, totalPages, currentPage } = meta;
 
     const onEdit = (user: IUser) => {
         setSelectedUser(user);
@@ -50,18 +51,15 @@ const Users = () => {
     };
 
     return (
-        <>
+        <MainLayout>
             <div className={"flex flex-col gap-3 w-full"}>
-                <div className={"flex gap-4 justify-between items-end"}>
-                    <div className={"flex items-center flex-row gap-4"}>
-                        <ToggleUser />
-                        <SelectorSearch
-                            getAndSet={[limit, setLimit]}
-                            searchable={false}
-                            className={'w-[80px]'}
-                            options={[20, 40, 60, 80]}
-                        />
-                    </div>
+                <PageHeader
+                    title="Користувачі"
+                    description="Хто має доступ до системи та з якою роллю"
+                />
+
+                {/* Вибір кількості рядків переїхав у смугу під таблицею */}
+                <div className={"flex gap-4 justify-end items-end"}>
                     <Button
                         className={"w-auto mx-0 py-0 h-[40px]"}
                         color={"greenDarkgreen"}
@@ -74,13 +72,13 @@ const Users = () => {
                 </div>
 
                 <div className="flex items-center flex-col justify-center gap-5 overflow-hidden">
-                    <div className={"overflow-x-auto w-full"}>
+                    <div className="w-full">
                         <Table>
                             <thead>
                             <TrHead>
-                                <th>Ім'я</th>
-                                <th>Пошта</th>
-                                <th>Роль</th>
+                                <SortableTh field="name" sortBy={sortBy} sortOrder={sortOrder} onSort={setSort}>Ім'я</SortableTh>
+                                <SortableTh field="email" sortBy={sortBy} sortOrder={sortOrder} onSort={setSort}>Пошта</SortableTh>
+                                <SortableTh field="role" sortBy={sortBy} sortOrder={sortOrder} onSort={setSort}>Роль</SortableTh>
                                 <th className={"w-[120px]"}></th>
                             </TrHead>
                             </thead>
@@ -90,22 +88,10 @@ const Users = () => {
                                     <td>{item.name}</td>
                                     <td>{item.email}</td>
                                     <td>{item.role}</td>
-                                    <td className={"!p-0 flex flex-row g-2"}>
-                                        <Button
-                                            className={"min-h-[36px] w-fit"}
-                                            color="greenDarkgreen"
-                                            onClick={() => onEdit(item)}
-                                        >
-                                            <img
-                                                src={EditSvg}
-                                                alt={"редагувати"}
-                                                className="w-4 h-4"
-                                            />
-                                        </Button>
-
-                                        <ButtonDel
-                                            onClick={() => onDelete(item.id)}
-                                            className={"min-h-[36px]"}
+                                    <td className="w-[60px]">
+                                        <RowActionsCell
+                                            onEdit={() => onEdit(item)}
+                                            onDelete={() => onDelete(item.id)}
                                         />
                                     </td>
                                 </TrBody>
@@ -135,6 +121,9 @@ const Users = () => {
                     currentPage={currentPage}
                     totalPages={totalPages}
                     onPageChange={setPage}
+                    totalItems={totalItems}
+                    limit={Number(limit)}
+                    onLimitChange={value => setLimit(String(value))}
                     disabled={isPendingDomain}
                 />
             </div>
@@ -144,7 +133,7 @@ const Users = () => {
                 user={selectedUser}
                 onClose={handleModalClose}
             />
-        </>
+        </MainLayout>
     );
 };
 

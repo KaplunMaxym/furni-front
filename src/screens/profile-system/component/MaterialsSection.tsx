@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import {Plus, Trash2, ChevronDown, ChevronUp, Search, Loader2, Check, X} from 'lucide-react';
+import { ChevronDown, ChevronUp, Loader2, Plus, Trash2 } from 'lucide-react';
 import { IProfileMaterial } from '@/screens/profile-material/types/IProfileMaterial';
 import { useProfileMaterialLinkMutation } from '@/screens/profile-system/hooks/useProfileMaterialLinkMutation';
 import { useProfileMaterialUnlinkMutation } from '@/screens/profile-system/hooks/useProfileMaterialUnlinkMutation';
@@ -7,6 +7,7 @@ import {useProfileMaterialSimple} from "@/screens/profile-material/hooks/useProf
 import {IProfileSystemDetail} from "@/screens/profile-system/types/profile-system/IProfileSystemDetail";
 import useModal, {ModalProps} from "@/hooks/useModal/useModal";
 import Modal from "@/ui/Modal/Modal";
+import SearchInput from "@/ui/input/SearchInput";
 
 interface MaterialsSectionProps {
     profileSystemId: number;
@@ -43,26 +44,26 @@ const decodeBeamLength = (val: unknown): number => {
 };
 
 const MaterialRow: React.FC<MaterialRowProps> = ({ material, onUnlink, isUnlinking }) => (
-    <div className="flex items-center justify-between gap-3 py-2 px-3 rounded-lg bg-react/500 hover:bg-react/400 transition-colors group">
+    <div className="flex items-center justify-between gap-3 py-2 px-3 rounded-lg bg-accent/40 hover:bg-accent/60 transition-colors group">
         <div className="flex items-center gap-3 min-w-0">
             <div
-                className="w-3 h-3 rounded-full shrink-0 border border-black/10"
+                className="w-3 h-3 rounded-full shrink-0 border border-border"
                 style={{ backgroundColor: material.color?.code ?? '#D1D1D1' }}
             />
             <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-800 truncate">{material.name}</p>
-                <p className="text-xs text-gray-400 font-mono">{material.articleCode}</p>
+                <p className="text-sm font-medium text-foreground truncate">{material.name}</p>
+                <p className="text-xs text-muted-foreground font-mono">{material.articleCode}</p>
             </div>
         </div>
 
         <div className="flex items-center gap-4 shrink-0">
-            <span className="text-xs text-gray-400 hidden sm:block">
+            <span className="text-xs text-muted-foreground hidden sm:block">
                 {(decodeBeamLength(material.beamLength) / 1000).toFixed(1)} м
             </span>
             <button
                 onClick={onUnlink}
                 disabled={isUnlinking}
-                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 disabled:cursor-not-allowed"
+                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/40 text-muted-foreground hover:text-destructive-foreground disabled:cursor-not-allowed"
                 title="Відв'язати матеріал"
             >
                 {isUnlinking
@@ -94,112 +95,72 @@ const LinkMaterialModal: React.FC<LinkMaterialModalProps> = ({
     const allLinked = !isPending && (data ?? []).filter(m => !linkedIds.has(m.id)).length === 0;
 
     return (
-        <Modal
-            {...props}
-            className="flex flex-col max-w-lg mx-2 max-h-[60vh] rounded-xl overflow-hidden"
-        >
-            <Modal.Title className="gap-2 px-5 py-4" onClose={props.onClose}>
-                <div className="flex items-center gap-3">
-                    <div>
-                        <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">
-                            Прив'язати матеріал
-                        </p>
-                        <p className="text-sm font-semibold text-gray-500 leading-tight">
-                            {detailLabel}
-                        </p>
-                    </div>
-                </div>
+        // Відступи тепер дає саме полотно модалки (p-6 у ModalLayout).
+        // Раніше на них накладалися власні px-5/py-4 заголовка й px-4 списку —
+        // виходила подвійна рамка, і на список лишалося менше половини вікна.
+        <Modal {...props} className="max-w-[520px]">
+            <Modal.Title onClose={props.onClose}>
+                Матеріал для «{detailLabel}»
             </Modal.Title>
 
-            <Modal.Body className="flex flex-col gap-0 p-0 overflow-hidden">
-                <div className="px-4 py-3">
-                    <div className="flex items-center gap-2.5 bg-react/500 rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-[#639922]/30 transition-all border border-react/400">
-                        <Search size={14} className="text-gray-400 shrink-0" />
-                        <input
-                            autoFocus
-                            value={search}
-                            onChange={e => setSearch(e.target.value)}
-                            placeholder="Пошук за назвою, артикулом або кольором..."
-                            className="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-500 text-gray-200"
-                            style={{ background: 'transparent' }}
-                        />
-                        {search && (
-                            <button
-                                onClick={() => setSearch('')}
-                                className="text-gray-400 hover:text-gray-200 transition-colors"
-                            >
-                                <X size={13} />
-                            </button>
-                        )}
-                    </div>
-                </div>
+            <Modal.Body className="flex flex-col gap-3">
+                <SearchInput
+                    value={search}
+                    onChange={setSearch}
+                    placeholder="Назва, артикул або колір"
+                />
 
-                <div className="overflow-y-auto flex-1 px-3 py-2 min-h-[200px]">
+                <div className="max-h-[320px] min-h-[180px] overflow-y-auto">
                     {isPending && (
-                        <div className="flex flex-col items-center justify-center py-12 gap-2">
-                            <Loader2 size={22} className="animate-spin text-gray-400" />
-                            <p className="text-xs text-gray-400">Завантаження матеріалів...</p>
+                        <div className="flex flex-col items-center justify-center gap-2 py-12">
+                            <Loader2 size={20} className="animate-spin text-muted-foreground" />
+                            <p className="text-xs text-muted-foreground">Завантаження матеріалів…</p>
                         </div>
                     )}
 
                     {!isPending && allLinked && !search && (
-                        <div className="flex flex-col items-center justify-center py-12 gap-3">
-                            <div className="w-10 h-10 rounded-full bg-react/500 flex items-center justify-center">
-                                <Check size={18} className="text-gray-500" />
-                            </div>
-                            <div className="text-center">
-                                <p className="text-sm font-medium text-gray-500">Всі матеріали прив'язані</p>
-                                <p className="text-xs text-gray-400 mt-0.5">Немає доступних матеріалів для додавання</p>
-                            </div>
-                        </div>
+                        <p className="py-12 text-center text-sm text-muted-foreground">
+                            Усі матеріали вже прив&apos;язані
+                        </p>
                     )}
 
                     {!isPending && !allLinked && filtered.length === 0 && search && (
-                        <div className="flex flex-col items-center justify-center py-12 gap-3">
-                            <div className="w-10 h-10 rounded-full bg-react/500 flex items-center justify-center">
-                                <Search size={18} className="text-gray-400" />
-                            </div>
-                            <div className="text-center">
-                                <p className="text-sm font-medium text-gray-800">Нічого не знайдено</p>
-                                <p className="text-xs text-gray-400 mt-0.5">Спробуйте інший запит</p>
-                            </div>
-                        </div>
+                        <p className="py-12 text-center text-sm text-muted-foreground">
+                            Нічого не знайдено
+                        </p>
                     )}
 
-                    <div className="space-y-1">
+                    <div className="space-y-0.5">
                         {filtered.map(m => (
                             <button
                                 key={m.id}
                                 onClick={() => onLink(m.id)}
                                 disabled={isLinking}
-                                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-react/500 active:bg-react/400 transition-colors text-left disabled:opacity-50 group"
+                                className="group flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent/60 disabled:opacity-50"
                             >
-                                <div
-                                    className="w-4 h-4 rounded-full shrink-0 border border-black/10 shadow-sm"
-                                    style={{ backgroundColor: m.color?.code ?? '#D1D1D1' }}
+                                <span
+                                    className="h-3.5 w-3.5 shrink-0 rounded-full border border-border"
+                                    style={{ backgroundColor: m.color?.code ?? 'transparent' }}
                                 />
-                                <div className="min-w-0 flex-1">
-                                    <p className="text-sm font-medium text-gray-800 truncate leading-tight">
+
+                                <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-sm font-medium leading-tight text-foreground">
                                         {m.name}
-                                    </p>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                        <p className="text-xs text-gray-400 font-mono">{m.articleCode}</p>
-                                        {m.color?.name && (
-                                            <>
-                                                <span className="text-gray-300">·</span>
-                                                <p className="text-xs text-gray-400">{m.color.name}</p>
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-2 shrink-0">
-                                    <span className="text-xs text-gray-400 tabular-nums">
-                                        {(decodeBeamLength(m.beamLength) / 1000).toFixed(1)} м
                                     </span>
-                                    <div className="w-6 h-6 rounded-md bg-react/500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <Plus size={13} className="text-gray-500" />
-                                    </div>
-                                </div>
+                                    <span className="block truncate text-xs text-muted-foreground">
+                                        <span className="font-mono">{m.articleCode}</span>
+                                        {m.color?.name ? ` · ${m.color.name}` : ''}
+                                    </span>
+                                </span>
+
+                                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                                    {(decodeBeamLength(m.beamLength) / 1000).toFixed(1)} м
+                                </span>
+
+                                <Plus
+                                    size={14}
+                                    className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                                />
                             </button>
                         ))}
                     </div>
@@ -238,27 +199,27 @@ const DetailMaterialBlock: React.FC<DetailMaterialBlockProps> = ({ detail, profi
 
     return (
         <>
-            <div className="rounded-lg border border-react/500 overflow-hidden">
+            <div className="rounded-lg border border-border overflow-hidden">
                 <button
                     onClick={() => setExpanded(v => !v)}
-                    className="w-full flex items-center justify-between px-4 py-2.5 bg-react/600 hover:bg-react/500 transition-colors"
+                    className="w-full flex items-center justify-between px-4 py-2.5 bg-card hover:bg-accent/60 transition-colors"
                 >
                     <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-800">{label}</span>
-                        <span className="text-xs text-gray-400 bg-react/400 px-2 py-0.5 rounded-full">
+                        <span className="text-sm font-medium text-foreground">{label}</span>
+                        <span className="text-xs text-muted-foreground bg-accent/60 px-2 py-0.5 rounded-full">
                             {materials.length}
                         </span>
                     </div>
                     {expanded
-                        ? <ChevronUp size={14} className="text-gray-400" />
-                        : <ChevronDown size={14} className="text-gray-400" />
+                        ? <ChevronUp size={14} className="text-muted-foreground" />
+                        : <ChevronDown size={14} className="text-muted-foreground" />
                     }
                 </button>
 
                 {expanded && (
-                    <div className="px-3 pb-3 pt-2 space-y-1.5 bg-react/600">
+                    <div className="px-3 pb-3 pt-2 space-y-1.5 bg-card">
                         {materials.length === 0 && (
-                            <p className="text-xs text-gray-400 text-center py-3">
+                            <p className="text-xs text-muted-foreground text-center py-3">
                                 Немає прив&apos;язаних матеріалів
                             </p>
                         )}
@@ -277,7 +238,7 @@ const DetailMaterialBlock: React.FC<DetailMaterialBlockProps> = ({ detail, profi
 
                         <button
                             onClick={linkModal.onOpen}
-                            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-dashed border-react/300 text-xs text-gray-400 hover:border-gray-400 hover:text-gray-600 hover:bg-react/500 transition-all mt-1"
+                            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:border-ring hover:text-foreground hover:bg-accent/60 transition-all mt-1"
                         >
                             <Plus size={13} />
                             Прив&apos;язати матеріал
@@ -307,7 +268,7 @@ const MaterialsSection: React.FC<MaterialsSectionProps> = ({ profileSystemId, de
     return (
         <div className="space-y-2">
             {profileDetails.length === 0 && (
-                <p className="text-sm text-gray-400 text-center py-6">
+                <p className="text-sm text-muted-foreground text-center py-6">
                     Деталі профільної системи відсутні
                 </p>
             )}
