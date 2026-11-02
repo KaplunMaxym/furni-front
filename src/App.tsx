@@ -26,6 +26,7 @@ import ProfileAccessoryScreen from "@/screens/profile-accessory/ProfileAccessory
 import CurrencyRate from "@/screens/currency-rate/CurrencyRate";
 import IntegrationLog from "@/screens/integration-log/IntegrationLog";
 import CutBatches from "@/screens/cut-batch/CutBatches";
+import Settings from "@/screens/settings/Settings";
 
 /**
  * Маршрути, доступні дилеру.
@@ -63,6 +64,7 @@ function App() {
         { path: RouterEnum.CURRENCY_RATE, element: <CurrencyRate /> },
         { path: RouterEnum.INTEGRATION_LOG, element: <IntegrationLog /> },
         { path: RouterEnum.CUT_BATCH, element: <CutBatches /> },
+        { path: RouterEnum.SETTINGS, element: <Settings /> },
         { path: RouterEnum.PROFILE_MATERIAL, element: <ProfileMaterialScreen /> },
         { path: RouterEnum.PROFILE_ACCESSORY, element: <ProfileAccessoryScreen /> },
         { path: RouterEnum.PROFILE_SYSTEM_DETAILS, element: <ProfileSystemDetailPage /> },

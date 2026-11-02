@@ -19,7 +19,8 @@ export const RouterEnum = {
     PROFILE_SYSTEM_DETAILS: '/profile-system/:id',
     GLASS_FILL: '/glass-fill',
     INTEGRATION_LOG: '/integration-log',
-    CUT_BATCH: '/cut-batch'
+    CUT_BATCH: '/cut-batch',
+    SETTINGS: '/settings'
 }
 
 export type RouterEnum = typeof RouterEnum[keyof typeof RouterEnum];

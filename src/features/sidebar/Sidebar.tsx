@@ -96,6 +96,7 @@ const GROUPS: Group[] = [
         label: 'Система',
         icon: Settings,
         items: [
+            { label: 'Налаштування', icon: Settings, href: RouterEnum.SETTINGS },
             { label: 'Курси валют', icon: Settings, href: RouterEnum.CURRENCY_RATE },
             /*
              * Журнал обміну — у «Системі», а не поруч із замовленнями.

@@ -157,6 +157,8 @@ export const integration1CPreviewUrl = (orderId: number) => `/integration-1c/ord
 export const integration1CHistoryUrl = (orderId: number) => `/integration-1c/order/${orderId}/history`;
 export const integration1CLogsUrl = () => '/integration-1c/log/all-log';
 export const integration1CLogUrl = (id: number) => `/integration-1c/log/get-log/${id}`;
+export const settingsUrl = () => '/setting/all-setting';
+export const updateSettingsUrl = () => '/setting/update-setting';
 export const cutBatchesUrl = () => '/integration-1c/cut-batch/all-batch';
 export const cutBatchUrl = (id: number) => `/integration-1c/cut-batch/get-batch/${id}`;
 
