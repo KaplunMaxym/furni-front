@@ -32,7 +32,6 @@ interface SceneContentProps extends Canvas3DAdvancedProps {
     handleOffset?: number;
     handlePosition?: number;
     hideDimensions?: boolean;
-    /** Дивитись на виріб із тилу — режим перегляду дилером. */
     viewFromBack?: boolean;
     hingeSide?: HandleSideEnum;
     hingeParams?: HingeDefaultParameters;

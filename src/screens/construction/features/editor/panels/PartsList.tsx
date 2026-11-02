@@ -92,12 +92,6 @@ export default function PartsList({meshes, selectedMesh, onSelectMesh, construct
 
                             return (
                                 <div key={`${mesh.name}-${idx}`} className="flex flex-col gap-1">
-                                    {/*
-                                      * Вибрана деталь підсвічується заливкою, а не рамкою,
-                                      * що зʼявляється лише під курсором: раніше рядок при
-                                      * наведенні підстрибував на два пікселі, бо рамка
-                                      * додавалася до вже наявних розмірів.
-                                      */}
                                     <div
                                         onClick={() => onSelectMesh(mesh)}
                                         className={cn(

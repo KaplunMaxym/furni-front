@@ -195,17 +195,15 @@ export function DimensionLines({frameWidth, frameHeight, beamThickness, hasHandl
                     if (botMill !== null) notchLines.push({ pt: project( hw - botEdge, -hh + bt / 2), ptStart: project( hw - botEdge - botMill / 2, -hh + bt / 2), ptEnd: project( hw - botEdge + botMill / 2, -hh + bt / 2), label: `${botMill}мм`, isVertical: true, anchorEnd: false });
                 } else {
                     /*
-                     * Фасад без ручки — так, ніби ручка справа.
+                     * Фасад без ручки — так, ніби ручка зліва.
                      *
                      * Те саме правило, що й у виїмках на моделі
-                     * (`HingeNotchesMesh`): без ручки `handleSide` порожній, і
-                     * підставлена ліва ручка ставила розміри до правої стійки.
-                     * Підписи мусять стояти там само, де намальовані виїмки, —
-                     * інакше розмір показує на одну стійку, а фреза йде по
-                     * іншій.
+                     * (`HingeNotchesMesh`). Підписи мусять стояти там само, де
+                     * намальовані виїмки, — інакше розмір показує на одну
+                     * стійку, а фреза йде по іншій.
                      */
                     const effectiveHandleSide = hasHandle === false
-                        ? HandleSideEnum.RIGHT
+                        ? HandleSideEnum.LEFT
                         : handleSide ?? HandleSideEnum.LEFT;
 
                     const hingeSideLocal =
